@@ -2,7 +2,7 @@
 """
 app.py - IDS G3 ENTI
 Versió amb lògica de "Sessió d'Atac" (Una alerta per atac) i gràfic apilat funcional.
-(Correcció d'errors d'indentació i sintaxi)
+(Correcció definitiva de zona horària i sintaxi)
 """
 
 import re
@@ -154,13 +154,12 @@ def detect_failed_attempts(lines):
     Analitza les línies de log i les classifica per tipus de fallada.
     """
     failed_attempts = []
-    # Per assignar un any base a logs que no en tenen
     current_year = datetime.now().year
     
     for line in lines:
         failure_type = None
         if "Failed password" in line or "authentication failure" in line:
-            failure_type = "password_auth" # Agrupem "Failed pass" i "auth failure"
+            failure_type = "password_auth"
         elif "Invalid user" in line:
             failure_type = "invalid_user"
         
@@ -172,7 +171,6 @@ def detect_failed_attempts(lines):
             date_str = date_match.group(0) if date_match else "Sense data"
             user = user_match.group(1) if user_match else "Desconegut"
             
-            # Passem l'any base al parser
             parsed_date = parse_log_timestamp(date_str, base_year=current_year)
 
             failed_attempts.append({
@@ -189,7 +187,6 @@ def parse_log_timestamp(date_str: str, base_year: int):
     if not date_str or date_str in ("N/A", "Sense data"):
         return None
     try:
-        # Intenta parsejar la data amb l'any base
         full = f"{date_str} {base_year}"
         ts = datetime.strptime(full, "%b %d %H:%M:%S %Y")
         
@@ -214,7 +211,6 @@ def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_
             ip_times.setdefault(ip, []).append((ts, att))
 
     alerts = []
-    # Ordenem els llindars de més alt a més baix
     threshold_levels_sorted = sorted(thresholds_dict.items(), key=lambda item: item[1], reverse=True)
 
     for ip, entries in ip_times.items():
@@ -251,7 +247,7 @@ def process_attack_session(session_entries, thresholds_dict, threshold_levels_so
     for level, threshold in threshold_levels_sorted:
         if count >= threshold:
             triggered_level = level
-            break # Hem trobat el nivell més alt
+            break 
             
     if triggered_level:
         first_ts, _ = session_entries[0]
@@ -266,7 +262,7 @@ def process_attack_session(session_entries, thresholds_dict, threshold_levels_so
             "source": "SSH IDS",
             "metadata": {
                 "ip": ip,
-                "timestamp": last_ts_iso, # Timestamp de l'event (últim intent)
+                "timestamp": last_ts_iso, 
                 "usuari": last_att.get('usuari'),
                 "primer_intent_finestra": first_ts_iso,
                 "total_intents_finestra": count,
@@ -297,11 +293,9 @@ def run_analysis(manager):
     relevant = filter_lines(lines)
     failed = detect_failed_attempts(relevant)
     
-    # 1. Detecció de Força Bruta (Password/Auth)
     bf_message = "Atac Força Bruta ({level}): {count} intents de contrasenya des de {ip}."
     brute_force_alerts = run_detection_logic(failed, "password_auth", THRESHOLDS_BRUTE_FORCE, bf_message)
 
-    # 2. Detecció d'Escaneig d'Usuaris
     scan_message = "Escaneig d'Usuaris ({level}): {count} intents d'usuari invàlid des de {ip}."
     scanning_alerts = run_detection_logic(failed, "invalid_user", THRESHOLDS_SCANNING, scan_message)
 
@@ -338,7 +332,7 @@ def get_timestamp_from_metadata(metadata_str):
         return None
     return None
 
-@st.cache_data(ttl=60) # Actualitza les dades de la BD cada 60 segons
+@st.cache_data(ttl=60) 
 def load_all_alerts(_manager):
     """
     Carrega totes les alertes des de la BD usant Pandas per a més eficiència.
@@ -351,7 +345,9 @@ def load_all_alerts(_manager):
         if df.empty:
             return pd.DataFrame(columns=['id', 'created_at', 'level', 'message', 'source', 'metadata', 'ip_source', 'event_timestamp_dt'])
 
-        df['created_at_dt'] = pd.to_datetime(df['created_at'])
+        # --- ★ CORRECCIÓ ZONA HORÀRIA 1 ★ ---
+        # Convertim la data de creació (que és UTC) i la passem a "ingènua" (naive)
+        df['created_at_dt'] = pd.to_datetime(df['created_at']).dt.tz_localize(None)
 
         def get_ip_from_metadata(metadata):
             if metadata:
@@ -365,14 +361,16 @@ def load_all_alerts(_manager):
         
         if 'metadata' in df.columns:
             df['ip_source'] = df['metadata'].apply(get_ip_from_metadata)
+            # Aquesta data ja és "ingènua" (naive) gràcies a parse_log_timestamp
             df['event_timestamp_dt'] = df['metadata'].apply(get_timestamp_from_metadata)
         else:
             df['ip_source'] = 'N/A'
             df['event_timestamp_dt'] = None
         
-        # Convertim a datetime de pandas.
+        # Convertim a datetime de pandas
         df['event_timestamp_dt'] = pd.to_datetime(df['event_timestamp_dt'])
-        df['event_timestamp_dt'] = df['event_timestamp_dt'].fillna(pd.to_datetime(df['created_at_dt']))
+        # Omplim els buits amb l'altra data (que ara també és "ingènua")
+        df['event_timestamp_dt'] = df['event_timestamp_dt'].fillna(df['created_at_dt'])
 
         return df
     except Exception as e:
@@ -460,13 +458,13 @@ else:
             time_data = filtered_df.dropna(subset=['event_timestamp_dt'])
             if not time_data.empty:
                 
-                # Agrupem per DIA ('D') i comptem cada 'level'
-                # Assegurem que la data no tingui timezone per a un 'resample' net
+                # --- ★ CORRECCIÓ ZONA HORÀRIA 2 ★ ---
+                # Ja no cal .tz_localize(None) perquè les dades ja són ingènues
                 
-                # ★★★ CORRECCIÓ DE SINTAXI (Línia 473) ★★★
-                alerts_per_day_level = time_data.set_index('event_timestamp_dt').tz_localize(None).resample('D')['level'].value_counts().reset_index(name="Nombre d'Alertes")
+                # --- ★ CORRECCIÓ DE SINTAXI (Línia 473) ★ ---
+                alerts_per_day_level = time_data.set_index('event_timestamp_dt').resample('D')['level'].value_counts().reset_index(name="Nombre d'Alertes")
                 
-                # ★★★ CORRECCIÓ DE SINTAXI (Línia 474) ★★★
+                # --- ★ CORRECCIÓ DE SINTAXI (Línia 474) ★ ---
                 alerts_per_day_level.columns = ['Dia', 'Severitat', "Nombre d'Alertes"]
 
                 if alerts_per_day_level.empty:
@@ -486,7 +484,7 @@ else:
                                         scale=alt.Scale(domain=domain_, range=range_),
                                         legend=alt.Legend(title="Severitat")),
                         # Tooltip per a detalls
-                        # ★★★ CORRECCIÓ DE SINTAXI (Línia 489) ★★★
+                        # --- ★ CORRECCIÓ DE SINTAXI (Línia 489) ★ ---
                         tooltip=[alt.Tooltip('Dia', format="%Y-%m-%d"), 'Severitat', "Nombre d'Alertes"]
                     ).interactive() 
                     
