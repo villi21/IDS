@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-main_final_integrat.py - Sistema complet de detecció d’intents SSH + gestió avançada d’alertes
-Inclou:
-- HU1–HU5: Lectura, detecció, informes i validació
-- Gestió d’alertes avançada amb log + BD (AlertManager)
+app.py - Interfaz web para el Sistema de Detecció d’intents SSH.
+Basat en 'main_final_integrat.py' i potenciat per Streamlit.
 """
 
 import re
@@ -13,6 +11,8 @@ import uuid
 import sqlite3
 import json
 import logging
+import streamlit as st  # <-- Nueva importación
+import pandas as pd     # <-- Nueva importación
 
 # ======== CONFIGURACIÓ GENERAL ========
 LOG_PATH = "sample.log"
@@ -20,6 +20,8 @@ THRESHOLD = 5
 WINDOW_SECONDS = 60
 
 # ======== CONFIGURACIÓ DEL LOGGER ========
+# (El logger de Streamlit es gestiona de manera diferent, 
+# però mantenim el logger de backend per a 'backend.log')
 logging.basicConfig(
     filename='backend.log',
     level=logging.INFO,
@@ -36,6 +38,7 @@ USER_RE = re.compile(r"for\s+(\w+)")
 
 # =========================================================
 # CLASSE DE GESTIÓ D'ALERTES AVANÇADA
+# (Exactament el teu codi original)
 # =========================================================
 
 class AlertManager:
@@ -69,12 +72,15 @@ class AlertManager:
                         last_updated TEXT NOT NULL
                     );
                 """)
-            print(f"Base de dades '{self.db_name}' preparada correctament.")
+                # Hem tret el print() d'aquí per no "brutar" la consola del servidor
         except Exception as e:
-            print(f"❌ Error en crear la taula: {e}")
+            # En lloc de print(), fem servir el logger
+            logger.error(f"❌ Error en crear la taula: {e}")
+            st.error(f"Error en crear la taula de la BD: {e}") # I ho mostrem a la UI
 
     def save_alert(self, alert: dict):
         if "level" not in alert or "message" not in alert:
+            logger.warning("Intent de desar alerta amb camps 'level' o 'message' buits.")
             return "Error: Falten camps obligatoris (level o message)."
         
         level = alert["level"]
@@ -109,12 +115,13 @@ class AlertManager:
 
 # =========================================================
 # FUNCIONS DE DETECCIÓ
+# (Exactament el teu codi original)
 # =========================================================
 
 def read_log(path: str):
     p = Path(path)
     if not p.exists():
-        print(f"Fitxer no trobat: {path}")
+        logger.error(f"Fitxer no trobat: {path}")
         return []
     with p.open("r", encoding="utf-8", errors="ignore") as f:
         return [line.strip() for line in f if line.strip()]
@@ -184,26 +191,124 @@ def detect_brute_force(failed_attempts, threshold=THRESHOLD, window_seconds=WIND
     return alerts
 
 # =========================================================
-# MAIN
+# LÒGICA D'ANÀLISI (abans era 'main()')
 # =========================================================
 
-def main():
-    print("Iniciant detecció d'intents SSH sospitosos...\n")
-    manager = AlertManager()
-
+def run_analysis(manager):
+    """
+    Executa el procés d'anàlisi complet i desa les alertes.
+    Retorna el recompte d'intents fallits i alertes generades.
+    """
+    logger.info("Iniciant anàlisi de log...")
     lines = read_log(LOG_PATH)
+    if not lines:
+        st.warning(f"El fitxer de log '{LOG_PATH}' està buit o no s'ha trobat.")
+        return 0, 0
+        
     relevant = filter_lines(lines)
     failed = detect_failed_attempts(relevant)
     alerts = detect_brute_force(failed)
 
-    print(f"Total intents fallits: {len(failed)}")
-    print(f"Total alertes generades: {len(alerts)}")
+    alerts_saved_count = 0
+    if alerts:
+        for alert in alerts:
+            manager.save_alert(alert)
+            alerts_saved_count += 1
+    
+    logger.info(f"Anàlisi completada. Intents fallits: {len(failed)}. Noves alertes: {alerts_saved_count}.")
+    return len(failed), alerts_saved_count
 
-    for alert in alerts:
-        resultat = manager.save_alert(alert)
-        print(resultat)
+# =========================================================
+# FUNCIONS PER A LA INTERFÍCIE WEB (Streamlit)
+# =========================================================
 
-    print("\nProcés completat. Consulta 'backend.log' i 'alerts.db' per a més detalls.")
+@st.cache_resource
+def get_alert_manager():
+    """Crea una única instància del gestor d'alertes."""
+    return AlertManager()
 
-if __name__ == "__main__":
-    main()
+@st.cache_data(ttl=60) # Actualitza les dades de la BD cada 60 segons
+def load_all_alerts(_manager):
+    """
+    Carrega totes les alertes des de la BD usant Pandas per a més eficiència.
+    El paràmetre '_manager' només hi és per invalidar la cache quan canvia.
+    """
+    try:
+        conn = _manager._get_connection()[0] # Obtenim la connexió
+        df = pd.read_sql_query("SELECT * FROM alerts ORDER BY created_at DESC", conn)
+        conn.close()
+        
+        # Processem el metadata (que és JSON) per a una millor visualització
+        if 'metadata' in df.columns:
+            df['metadata'] = df['metadata'].apply(lambda x: json.loads(x) if x else None)
+        return df
+    except Exception as e:
+        st.error(f"Error en llegir la base de dades 'alerts.db': {e}")
+        return pd.DataFrame()
+
+def get_ip_from_metadata(metadata):
+    """Funció helper per extreure la IP del camp metadata."""
+    if isinstance(metadata, dict) and 'ip' in metadata:
+        return metadata.get('ip')
+    return 'N/A'
+
+# =========================================================
+# INTERFÍCIE WEB (Streamlit)
+# (Això reemplaça el teu 'if __name__ == "__main__":')
+# =========================================================
+
+# --- Configuració de la Pàgina ---
+st.set_page_config(page_title="Dashboard IDS SSH", layout="wide", page_icon="🛡️")
+
+# --- Títol ---
+st.title("🛡️ Dashboard de Detección de Intrusos (IDS SSH)")
+
+# Obtenim el gestor d'alertes (cachejat)
+manager = get_alert_manager()
+
+# --- Secció 1: Executar Anàlisi ---
+st.subheader("Executar Anàlisi Manual")
+if st.button("Analitzar 'sample.log' ara"):
+    with st.spinner("Processant el fitxer de log..."):
+        failed_count, alerts_count = run_analysis(manager)
+    
+    st.success(f"Anàlisi completada! Intents fallits detectats: **{failed_count}**. Noves alertes generades: **{alerts_count}**.")
+    # Forcem la recàrrega de les dades (invalidant la cache)
+    st.cache_data.clear()
+
+st.markdown("---")
+
+# --- Secció 2: Dashboard d'Alertes ---
+st.header("Alertes de Seguretat Registrades")
+
+# Carregar dades
+alerts_df = load_all_alerts(manager)
+
+if alerts_df.empty:
+    st.info("No s'ha trobat cap alerta a la base de dades. Executa una anàlisi.")
+else:
+    # --- Estadístiques Clau ---
+    st.subheader("Estadístiques Clau")
+    total_alerts = len(alerts_df)
+    critical_alerts = alerts_df[alerts_df['level'] == 'CRITICAL'].shape[0]
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total d'Alertes", total_alerts)
+    col2.metric("Alertes Crítiques", critical_alerts)
+    col3.metric("Alertes No Reconegudes", alerts_df[alerts_df['acknowledged'] == 0].shape[0])
+
+    # --- Gràfic d'Alertes per IP ---
+    st.subheader("Top IPs amb Alertes")
+    
+    # Extraiem la IP del metadata
+    alerts_df['ip_source'] = alerts_df['metadata'].apply(get_ip_from_metadata)
+    ip_counts = alerts_df[alerts_df['ip_source'] != 'N/A']['ip_source'].value_counts().head(10)
+    
+    if not ip_counts.empty:
+        st.bar_chart(ip_counts)
+    else:
+        st.caption("No s'han trobat dades d'IP a les metadades de les alertes.")
+
+    # --- Taula d'Alertes ---
+    st.subheader("Taula Completa d'Alertes")
+    st.dataframe(alerts_df)
