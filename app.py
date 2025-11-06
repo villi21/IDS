@@ -464,11 +464,9 @@ else:
                 # Assegurem que la data no tingui timezone per a un 'resample' net
                 
                 # ★★★ CORRECCIÓ DE SINTAXI (Línia 473) ★★★
-                # Canviem 'Nombre d_Alertes' per "Nombre d'Alertes" (cometes dobles)
                 alerts_per_day_level = time_data.set_index('event_timestamp_dt').tz_localize(None).resample('D')['level'].value_counts().reset_index(name="Nombre d'Alertes")
                 
                 # ★★★ CORRECCIÓ DE SINTAXI (Línia 474) ★★★
-                # Canviem 'Nombre d\'Alertes' per "Nombre d'Alertes" (cometes dobles)
                 alerts_per_day_level.columns = ['Dia', 'Severitat', "Nombre d'Alertes"]
 
                 if alerts_per_day_level.empty:
