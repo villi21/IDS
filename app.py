@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-app.py - Interfaz web para el Sistema de Detecció d’intents SSH.
-Basat en 'main_final_integrat.py' i potenciat per Streamlit.
+app.py - Interfaz web per a l'Analista de Seguretat (IDS SSH).
+Inclou visualització de dades, gràfics temporals i filtres interactius.
 """
 
 import re
@@ -20,8 +20,6 @@ THRESHOLD = 5
 WINDOW_SECONDS = 60
 
 # ======== CONFIGURACIÓ DEL LOGGER ========
-# (El logger de Streamlit es gestiona de manera diferent, 
-# però mantenim el logger de backend per a 'backend.log')
 logging.basicConfig(
     filename='backend.log',
     level=logging.INFO,
@@ -38,7 +36,6 @@ USER_RE = re.compile(r"for\s+(\w+)")
 
 # =========================================================
 # CLASSE DE GESTIÓ D'ALERTES AVANÇADA
-# (El teu codi original)
 # =========================================================
 
 class AlertManager:
@@ -49,7 +46,7 @@ class AlertManager:
         self.crear_taula()
 
     def _get_connection(self):
-        conn = sqlite3.connect(self.db_name)
+        conn = sqlite3.connect(self.db_name, check_same_thread=False)
         conn.row_factory = sqlite3.Row 
         return conn, conn.cursor()
     
@@ -116,13 +113,13 @@ class AlertManager:
 
 # =========================================================
 # FUNCIONS DE DETECCIÓ
-# (El teu codi original)
 # =========================================================
 
 def read_log(path: str):
     p = Path(path)
     if not p.exists():
         logger.error(f"Fitxer no trobat: {path}")
+        st.error(f"Error: El fitxer '{path}' no s'ha trobat. Assegura't que existeix al repositori.")
         return []
     with p.open("r", encoding="utf-8", errors="ignore") as f:
         return [line.strip() for line in f if line.strip()]
@@ -168,27 +165,48 @@ def detect_brute_force(failed_attempts, threshold=THRESHOLD, window_seconds=WIND
         ip_times.setdefault(ip, []).append((ts, att))
 
     alerts = []
+    # Llista per evitar alertes duplicades en la mateixa execució
+    alertes_generades_per_ip_temps = set()
+
     for ip, entries in ip_times.items():
-        entries.sort(key=lambda x: x[0])
-        times = [t for t, _ in entries]
+        entries.sort(key=lambda x: x[0]) 
+        
+        if len(entries) < threshold:
+            continue
+
         left = 0
-        for right in range(len(times)):
-            while left <= right and (times[right] - times[left]).total_seconds() > window_seconds:
+        for right in range(len(entries)):
+            while left <= right and (entries[right][0] - entries[left][0]).total_seconds() > window_seconds:
                 left += 1
+            
             count = right - left + 1
+            
             if count >= threshold:
+                # Hem trobat un atac
                 last_ts, last_att = entries[right]
-                alerts.append({
-                    "level": "CRITICAL",
-                    "message": f"{count} intents fallits des de {ip} en {window_seconds}s.",
-                    "source": "SSH IDS",
-                    "metadata": {
-                        "ip": ip,
-                        "timestamp": last_ts.isoformat(sep=' '),
-                        "usuari": last_att.get('usuari')
-                    }
-                })
-                left = right + 1
+                
+                # Creem una clau única per a aquesta alerta
+                alert_key = (ip, last_ts.strftime("%Y-%m-%d %H:%M"))
+                
+                if alert_key not in alertes_generades_per_ip_temps:
+                    alerts.append({
+                        "level": "CRITICAL",
+                        "message": f"{count} intents fallits des de {ip} en menys de {window_seconds}s.",
+                        "source": "SSH IDS",
+                        "metadata": {
+                            "ip": ip,
+                            "timestamp": last_ts.isoformat(sep=' '),
+                            "usuari": last_att.get('usuari'),
+                            "primer_intent": entries[left][0].isoformat(sep=' '),
+                            "ultim_intent": last_ts.isoformat(sep=' '),
+                            "total_intents_a_la_finestra": count
+                        }
+                    })
+                    alertes_generades_per_ip_temps.add(alert_key)
+                
+                # Important: Reiniciem la finestra per no comptar aquests intents
+                left = right + 1 
+                
     return alerts
 
 # =========================================================
@@ -203,7 +221,6 @@ def run_analysis(manager):
     logger.info("Iniciant anàlisi de log...")
     lines = read_log(LOG_PATH)
     if not lines:
-        st.warning(f"El fitxer de log '{LOG_PATH}' està buit o no s'ha trobat.")
         return 0, 0
         
     relevant = filter_lines(lines)
@@ -232,25 +249,32 @@ def get_alert_manager():
 def load_all_alerts(_manager):
     """
     Carrega totes les alertes des de la BD usant Pandas per a més eficiència.
-    El paràmetre '_manager' només hi és per invalidar la cache quan canvia.
     """
     try:
         conn = _manager._get_connection()[0] 
         df = pd.read_sql_query("SELECT * FROM alerts ORDER BY created_at DESC", conn)
         conn.close()
         
+        if df.empty:
+            return pd.DataFrame(columns=['id', 'created_at', 'level', 'message', 'source', 'metadata', 'ip_source', 'created_at_dt'])
+
+        # --- Processament de Dades ---
+        
+        # 1. Convertir 'created_at' a datetime
+        df['created_at_dt'] = pd.to_datetime(df['created_at'])
+
+        # 2. Extreure IP de 'metadata' (JSON)
+        def get_ip_from_metadata(metadata):
+            if metadata:
+                try:
+                    data = json.loads(metadata)
+                    if isinstance(data, dict) and 'ip' in data:
+                        return data.get('ip')
+                except json.JSONDecodeError:
+                    return 'N/A'
+            return 'N/A'
+        
         if 'metadata' in df.columns:
-            # Funció helper per extreure la IP
-            def get_ip_from_metadata(metadata):
-                if metadata:
-                    try:
-                        data = json.loads(metadata)
-                        if isinstance(data, dict) and 'ip' in data:
-                            return data.get('ip')
-                    except json.JSONDecodeError:
-                        return 'N/A'
-                return 'N/A'
-            
             df['ip_source'] = df['metadata'].apply(get_ip_from_metadata)
         else:
             df['ip_source'] = 'N/A'
@@ -258,85 +282,128 @@ def load_all_alerts(_manager):
         return df
     except Exception as e:
         st.error(f"Error en llegir la base de dades 'alerts.db': {e}")
-        return pd.DataFrame(columns=['id', 'created_at', 'level', 'message', 'source', 'metadata', 'ip_source'])
-
+        return pd.DataFrame(columns=['id', 'created_at', 'level', 'message', 'source', 'metadata', 'ip_source', 'created_at_dt'])
 
 # =========================================================
 # INTERFÍCIE WEB (Streamlit)
-# (Això reemplaça el teu 'if __name__ == "__main__":')
 # =========================================================
 
 # --- Configuració de la Pàgina ---
 st.set_page_config(page_title="Dashboard IDS SSH", layout="wide", page_icon="🛡️")
 
-# --- Títol ---
-st.title("🛡️ Dashboard de Detección de Intrusos (IDS SSH)")
+# --- Títol i Descripció ---
+st.title("🛡️ Dashboard d'Analista de Seguretat (IDS SSH)")
+st.caption("Un monitor visual per a la detecció d'intrusions i anàlisi de logs SSH.")
 
 # Obtenim el gestor d'alertes (cachejat)
 manager = get_alert_manager()
 
 # --- Secció 1: Executar Anàlisi ---
-with st.expander("Executar Anàlisi Manual", expanded=False):
+with st.expander("Panel d'Anàlisi (Execució Manual)"):
+    st.info("""
+    Prement aquest botó, el sistema llegirà el fitxer 'sample.log', processarà les línies, 
+    detectarà atacs de força bruta i desarà les noves alertes a la base de dades.
+    """)
     if st.button("Analitzar 'sample.log' ara"):
         with st.spinner("Processant el fitxer de log..."):
             failed_count, alerts_count = run_analysis(manager)
         
-        st.success(f"Anàlisi completada! Intents fallits detectats: **{failed_count}**. Noves alertes generades: **{alerts_count}**.")
+        if failed_count == 0 and alerts_count == 0:
+             st.warning("El fitxer de log s'ha llegit, però estava buit o no s'han trobat línies rellevants.")
+        else:
+            st.success(f"Anàlisi completada! Intents fallits detectats: **{failed_count}**. Noves alertes generades: **{alerts_count}**.")
+        
         # Forcem la recàrrega de les dades (invalidant la cache)
         st.cache_data.clear()
 
 st.markdown("---")
 
 # --- Secció 2: Dashboard d'Alertes ---
-st.header("Alertes de Seguretat Registrades")
+st.header("📊 Visualització de Dades")
 
 # Carregar dades
 alerts_df = load_all_alerts(manager)
 
-# --- ★ NOU: Barra lateral de Filtres (Sprint 3) ★ ---
-st.sidebar.header("Filtres i Cerca")
+# --- Barra lateral de Filtres ---
+st.sidebar.header("🔍 Controls i Filtres")
 
 # Filtre de Cerca per IP
-ip_search = st.sidebar.text_input("Cercar per IP")
+ip_search = st.sidebar.text_input("Cercar per IP", help="Filtra per una IP específica. Ex: 192.168.1.100")
 
 # Filtre de Severitat (Nivell)
-all_levels = alerts_df['level'].unique()
-level_filter = st.sidebar.multiselect("Filtrar per Nivell", options=all_levels, default=all_levels)
+if not alerts_df.empty:
+    all_levels = alerts_df['level'].unique()
+    level_filter = st.sidebar.multiselect("Filtrar per Nivell", 
+                                        options=all_levels, 
+                                        default=all_levels,
+                                        help="Selecciona els nivells d'alerta a mostrar.")
+else:
+    all_levels = []
+    level_filter = []
 
 # Aplicar filtres
 if not alerts_df.empty:
+    filtered_df = alerts_df.copy()
     if ip_search:
-        alerts_df = alerts_df[alerts_df['ip_source'].str.contains(ip_search, case=False, na=False)]
+        filtered_df = filtered_df[filtered_df['ip_source'].str.contains(ip_search, case=False, na=False)]
     
     if level_filter:
-        alerts_df = alerts_df[alerts_df['level'].isin(level_filter)]
+        filtered_df = filtered_df[filtered_df['level'].isin(level_filter)]
 else:
-    st.info("No s'ha trobat cap alerta a la base de dades. Executa una anàlisi.")
+    filtered_df = alerts_df.copy()
+
 
 # --- Mostrar Dashboard ---
-if alerts_df.empty and (ip_search or len(level_filter) < len(all_levels)):
-    st.warning("Cap alerta coincideix amb els filtres seleccionats.")
-elif not alerts_df.empty:
-    # --- Estadístiques Clau (ara basades en les dades filtrades) ---
-    st.subheader("Estadístiques (Segons Filtres)")
-    total_alerts = len(alerts_df)
-    critical_alerts = alerts_df[alerts_df['level'] == 'CRITICAL'].shape[0]
+if alerts_df.empty:
+    st.info("No s'ha trobat cap alerta a la base de dades. Executa una anàlisi per començar.")
+elif filtered_df.empty:
+    st.warning("S'han trobat alertes a la BD, però cap coincideix amb els filtres seleccionats.")
+else:
+    # --- Estadístiques Clau (basades en les dades filtrades) ---
+    st.subheader("Estadístiques Clau (Segons Filtres)")
+    
+    total_alerts = len(filtered_df)
+    critical_alerts = filtered_df[filtered_df['level'] == 'CRITICAL'].shape[0]
+    unacknowledged = filtered_df[filtered_df['acknowledged'] == 0].shape[0]
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total d'Alertes", total_alerts)
-    col2.metric("Alertes Crítiques", critical_alerts)
-    col3.metric("Alertes No Reconegudes", alerts_df[alerts_df['acknowledged'] == 0].shape[0])
+    col1.metric("Total d'Alertes", total_alerts, help="Nombre total d'alertes que coincideixen amb els filtres.")
+    col2.metric("Alertes Crítiques", critical_alerts, help="Nombre d'alertes de nivell 'CRITICAL'.")
+    col3.metric("Alertes No Reconegudes", unacknowledged, help="Alertes pendents de revisió.")
 
-    # --- Gràfic d'Alertes per IP (ara basat en les dades filtrades) ---
-    st.subheader("Top IPs amb Alertes (Segons Filtres)")
-    
-    ip_counts = alerts_df[alerts_df['ip_source'] != 'N/A']['ip_source'].value_counts().head(10)
-    
-    if not ip_counts.empty:
-        st.bar_chart(ip_counts)
-    else:
-        st.caption("No s'han trobat dades d'IP per mostrar al gràfic.")
+    st.markdown("---")
+
+    # --- Gràfics (basats en les dades filtrades) ---
+    col_graph1, col_graph2 = st.columns(2)
+
+    with col_graph1:
+        # --- ★ NOU: Gràfic Temporal d'Alertes (Sprint 2) ★ ---
+        st.subheader("📈 Gràfic Temporal d'Alertes")
+        st.caption("Nombre d'alertes generades per hora.")
+        
+        # Resample per hora. Assegurem que l'índex és datetime
+        alerts_per_hour = filtered_df.set_index('created_at_dt').resample('h').size()
+        alerts_per_hour.name = "Nombre d'alertes"
+        
+        if alerts_per_hour.empty:
+            st.caption("No hi ha dades per mostrar al gràfic temporal.")
+        else:
+            st.bar_chart(alerts_per_hour, use_container_width=True)
+
+    with col_graph2:
+        # --- Gràfic d'Alertes per IP ---
+        st.subheader("💥 Top IPs Problemàtiques")
+        st.caption("Comptador d'alertes generades per cada IP.")
+        
+        ip_counts = filtered_df[filtered_df['ip_source'] != 'N/A']['ip_source'].value_counts().head(10)
+        
+        if not ip_counts.empty:
+            st.bar_chart(ip_counts, use_container_width=True)
+        else:
+            st.caption("No s'han trobat dades d'IP per mostrar al gràfic.")
+
+    st.markdown("---")
 
     # --- Taula d'Alertes (ara filtrada) ---
-    st.subheader("Taula Completa d'Alertes (Filtrada)")
-    st.dataframe(alerts_df)
+    st.subheader("📄 Registre Detallat d'Alertes (Filtrat)")
+    st.dataframe(filtered_df, use_container_width=True)
