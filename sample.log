@@ -1,23 +1,8 @@
 # =========================================================
-# BLOC 1: TRÀNSIT NORMAL I SESSIONS LEGÍTIMES
+# BLOC 1: ATAC DE FORÇA BRUTA (CRITICAL)
+# Resultat: 6 intents de 'Failed password' -> 1 ALERTA CRITICAL
+# Hora: 11:00
 # =========================================================
-# L'script hauria d'ignorar la majoria d'això, excepte "session opened/closed".
-
-Oct 10 10:00:01 server sshd[1234]: Server listening on 0.0.0.0 port 22.
-Oct 10 10:00:02 server sshd[1234]: Received signal 15; terminating.
-Oct 10 10:01:00 server sshd[2000]: Server listening on 0.0.0.0 port 22.
-Oct 10 10:05:10 server sshd[2010]: pam_unix(sshd:session): session opened for user good_user by (uid=0)
-Oct 10 10:05:11 server sshd[2010]: Accepted password for good_user from 1.2.3.4 port 12345 ssh2
-Oct 10 10:05:15 server sshd[2010]: pam_unix(sshd:session): session closed for user good_user
-Oct 10 10:10:20 server sshd[3015]: Accepted publickey for admin_user from 8.8.8.8 port 54321 ssh2: RSA SHA256:abc...
-Oct 10 10:10:21 server sshd[3015]: pam_unix(sshd:session): session opened for user admin_user by (uid=0)
-Oct 10 10:30:00 server sshd[3015]: pam_unix(sshd:session): session closed for user admin_user
-
-# =========================================================
-# BLOC 2: ATAC DE FORÇA BRUTA RÀPID (CLÀSSIC)
-# Resultat: Hauria de generar 1 ALERTA CRÍTICA per a 192.168.1.100
-# =========================================================
-
 Oct 10 11:00:01 server sshd[4001]: Failed password for invalid user admin from 192.168.1.100 port 55001 ssh2
 Oct 10 11:00:05 server sshd[4002]: Failed password for invalid user root from 192.168.1.100 port 55002 ssh2
 Oct 10 11:00:10 server sshd[4003]: Failed password for invalid user user from 192.168.1.100 port 55003 ssh2
@@ -26,88 +11,40 @@ Oct 10 11:00:20 server sshd[4005]: Failed password for invalid user support from
 Oct 10 11:00:25 server sshd[4006]: Failed password for invalid user backup from 192.168.1.100 port 55006 ssh2
 
 # =========================================================
-# BLOC 3: LÍNIES DE LOG IRRELLEVANTS (SOROLL)
-# Resultat: Hauria d'ignorar-les TOTES.
+# BLOC 2: TRÀNSIT NORMAL
 # =========================================================
-
-Oct 10 11:01:00 server sshd[4010]: Connection closed by 192.168.1.100 port 55006 [preauth]
-Oct 10 11:02:00 server sshd[4011]: Disconnected from 1.2.3.4 port 12345
-Oct 10 11:03:00 server sshd[4012]: Received disconnect from 8.8.8.8 port 54321: 11: disconnected by user
-Oct 10 11:04:00 server sshd[4013]: subsystem request for sftp
-Oct 10 11:05:00 server systemd: pam_unix(systemd-user:session): session opened for user good_user by (uid=0)
-Oct 10 11:05:01 server CRON[4014]: pam_unix(cron:session): session opened for user root by (uid=0)
-Oct 10 11:05:01 server CRON[4014]: pam_unix(cron:session): session closed for user root
+Oct 10 12:05:10 server sshd[2010]: pam_unix(sshd:session): session opened for user good_user by (uid=0)
+Oct 10 12:05:11 server sshd[2010]: Accepted password for good_user from 1.2.3.4 port 12345 ssh2
+Oct 10 12:05:15 server sshd[2010]: pam_unix(sshd:session): session closed for user good_user
 
 # =========================================================
-# BLOC 4: ATAC DE FORÇA BRUTA LENT (PER SOTA DEL LLINDAR)
-# Resultat: NO hauria de generar cap alerta. Són 4 intents (llindar és 5).
+# BLOC 3: ATAC DE FORÇA BRUTA (HIGH)
+# Resultat: 4 intents de 'Failed password' -> 1 ALERTA HIGH
+# Hora: 13:30
 # =========================================================
-
-Oct 10 11:10:00 server sshd[5001]: Failed password for root from 10.0.0.5 port 10001 ssh2
-Oct 10 11:10:30 server sshd[5002]: Failed password for root from 10.0.0.5 port 10002 ssh2
-Oct 10 11:11:05 server sshd[5003]: Failed password for root from 10.0.0.5 port 10003 ssh2
-Oct 10 11:11:40 server sshd[5004]: Failed password for root from 10.0.0.5 port 10004 ssh2
-
-# =========================================================
-# BLOC 5: ATAC DE FORÇA BRUTA (TIPUS 2 - "INVALID USER")
-# Resultat: Hauria de generar 1 ALERTA CRÍTICA per a 10.40.1.12
-# =========================================================
-
-Oct 10 11:15:01 server sshd[6001]: Invalid user administrator from 10.40.1.12 port 10001 ssh2
-Oct 10 11:15:03 server sshd[6002]: Invalid user admin from 10.40.1.12 port 10002 ssh2
-Oct 10 11:15:05 server sshd[6003]: Invalid user support from 10.40.1.12 port 10003 ssh2
-Oct 10 11:15:07 server sshd[6004]: Invalid user guest from 10.40.1.12 port 10004 ssh2
-Oct 10 11:15:09 server sshd[6005]: Invalid user test from 10.40.1.12 port 10005 ssh2
-Oct 10 11:15:11 server sshd[6006]: Invalid user pi from 10.40.1.12 port 10006 ssh2
-Oct 10 11:15:13 server sshd[6007]: Invalid user ubuntu from 10.40.1.12 port 10007 ssh2
+Oct 10 13:30:01 server sshd[5001]: Failed password for root from 11.22.33.44 port 4321 ssh2
+Oct 10 13:30:03 server sshd[5002]: Failed password for root from 11.22.33.44 port 4322 ssh2
+Oct 10 13:30:05 server sshd[5003]: Failed password for root from 11.22.33.44 port 4323 ssh2
+Oct 10 13:30:07 server sshd[5004]: Failed password for root from 11.22.33.44 port 4324 ssh2
 
 # =========================================================
-# BLOC 6: ATAC DE FORÇA BRUTA DISTRIBUÏT (DIFERENTS IPs)
-# Resultat: NO hauria de generar cap alerta (l'script agrupa per IP).
+# BLOC 4: ESCANEIG D'USUARIS (MEDIUM)
+# Resultat: 7 intents d''Invalid user' -> 1 ALERTA MEDIUM
+# Hora: 15:15
 # =========================================================
-
-Oct 10 11:20:01 server sshd[7001]: Failed password for root from 1.1.1.1 port 1234
-Oct 10 11:20:02 server sshd[7002]: Failed password for root from 2.2.2.2 port 1234
-Oct 10 11:20:03 server sshd[7003]: Failed password for root from 3.3.3.3 port 1234
-Oct 10 11:20:04 server sshd[7004]: Failed password for root from 4.4.4.4 port 1234
-Oct 10 11:20:05 server sshd[7005]: Failed password for root from 5.5.5.5 port 1234
-
-# =========================================================
-# BLOC 7: LÍNIES MAL FORMADES (PROVA DE REGEX)
-# Resultat: Hauria de processar-les sense errors, obtenint "Desconeguda" o "Sense data".
-# =========================================================
-
-Oct 10 11:25:01 server sshd[8001]: Failed password for root from port 1234 ssh2
-Oct 10 11:25:02 server sshd[8002]: Failed password for invalid user
-Oct 10 11:25:03 server sshd[8003]: Invalid user test from 127.0.0.1
-Oct 10 11:25:04 server sshd[8004]: Failed password for 192.168.1.1
-Oct 10 11:25:05 server sshd[8005]: authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=11.22.33.44  user=root
-Oct 10 11:25:06 server sshd[8006]: Failed password for root from 11.22.33.44 port 4321 ssh2
-Oct 10 11:25:07 server sshd[8007]: Failed password for root from 11.22.33.44 port 4322 ssh2
-Oct 10 11:25:08 server sshd[8008]: Failed password for root from 11.22.33.44 port 4323 ssh2
-Oct 10 11:25:09 server sshd[8009]: Failed password for root from 11.22.33.44 port 4324 ssh2
-Oct 10 11:25:10 server sshd[8010]: Failed password for root from 11.22.33.44 port 4325 ssh2
-# Resultat BLOC 7: Hauria de generar 1 ALERTA CRÍTICA per a 11.22.33.44 (5 intents)
-# i registrar altres intents fallits amb camps "Desconegut".
+Oct 10 15:15:01 server sshd[6001]: Invalid user administrator from 10.40.1.12 port 10001 ssh2
+Oct 10 15:15:03 server sshd[6002]: Invalid user admin from 10.40.1.12 port 10002 ssh2
+Oct 10 15:15:05 server sshd[6003]: Invalid user support from 10.40.1.12 port 10003 ssh2
+Oct 10 15:15:07 server sshd[6004]: Invalid user guest from 10.40.1.12 port 10004 ssh2
+Oct 10 15:15:09 server sshd[6005]: Invalid user test from 10.40.1.12 port 10005 ssh2
+Oct 10 15:15:11 server sshd[6006]: Invalid user pi from 10.40.1.12 port 10006 ssh2
+Oct 10 15:15:13 server sshd[6007]: Invalid user ubuntu from 10.40.1.12 port 10007 ssh2
 
 # =========================================================
-# BLOC 8: ATAC DE FORÇA BRUTA (TIPUS 3 - "authentication failure")
-# Resultat: Hauria de generar 1 ALERTA CRÍTICA per a 203.0.113.50
+# BLOC 5: ESCANEIG D'USUARIS (LOW)
+# Resultat: 3 intents d''Invalid user' -> 1 ALERTA LOW
+# Hora: 17:01
 # =========================================================
-
-Oct 10 11:30:01 server sshd[9001]: User root from 203.0.113.50 not allowed because not listed in AllowUsers
-Oct 10 11:30:02 server sshd[9001]: input_userauth_request: invalid user root [preauth]
-Oct 10 11:30:03 server sshd[9001]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=203.0.113.50  user=root
-Oct 10 11:30:05 server sshd[9002]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=203.0.113.50  user=admin
-Oct 10 11:30:07 server sshd[9003]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=203.0.113.50  user=test
-Oct 10 11:30:09 server sshd[9004]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=203.0.113.50  user=guest
-Oct 10 11:30:11 server sshd[9005]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=203.0.113.50  user=support
-Oct 10 11:30:13 server sshd[9006]: Failed password for invalid user nobody from 203.0.113.50 port 9999 ssh2
-# Resultat BLOC 8: Hauria de generar 1 ALERTA CRÍTICA per a 203.0.113.50
-
-# =========================================================
-# BLOC 9: TRÀNSIT NORMAL PER TANCAR
-# =========================================================
-Oct 10 11:35:01 server sshd[10001]: Accepted password for dev_user from 198.51.100.1 port 12345 ssh2
-Oct 10 11:35:02 server sshd[10001]: pam_unix(sshd:session): session opened for user dev_user by (uid=0)
-Oct 10 11:40:00 server sshd[10001]: pam_unix(sshd:session): session closed for user dev_user
+Oct 10 17:01:20 server sshd[7001]: Invalid user bob from 203.0.113.50 port 9990 ssh2
+Oct 10 17:01:25 server sshd[7002]: Invalid user alice from 203.0.113.50 port 9991 ssh2
+Oct 10 17:01:30 server sshd[7003]: Invalid user charlie from 203.0.113.50 port 9992 ssh2
