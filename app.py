@@ -2,7 +2,7 @@
 """
 app.py - Interfaz web per a l'Analista de Seguretat (IDS SSH).
 Inclou visualització de dades, gràfics temporals i filtres interactius.
-(Versió amb lògica de severitat qualitativa i gràfic corregit)
+(Versió amb correcció d'error None a multiselect)
 """
 
 import re
@@ -166,6 +166,7 @@ def parse_log_timestamp(date_str: str):
     if not date_str or date_str in ("N/A", "Sense data"):
         return None
     try:
+        # Utilitzem l'any actual del servidor com a referència
         year = datetime.now().year
         full = f"{date_str} {year}"
         return datetime.strptime(full, "%b %d %H:%M:%S %Y")
@@ -199,7 +200,6 @@ def run_detection_logic(failed_attempts, failure_types, thresholds, levels, mess
 
             count = right - left + 1
             
-            # Comprova del llindar més alt al més baix
             for level in reversed(levels): # Ex: ["HIGH", "CRITICAL"] -> comprova CRITICAL primer
                 threshold = thresholds[level]
                 if count >= threshold and alerted_at_index[level] < left:
@@ -218,7 +218,7 @@ def run_detection_logic(failed_attempts, failure_types, thresholds, levels, mess
                         }
                     })
                     alerted_at_index[level] = left
-                    break # Genera només 1 alerta per intent
+                    break 
                 
     return alerts
 
@@ -238,8 +238,6 @@ def run_analysis(manager):
         
     relevant = filter_lines(lines)
     failed = detect_failed_attempts(relevant)
-
-    # ★ LÒGICA DE DETECCIÓ QUALITATIVA ★
     
     # 1. Detecció de Força Bruta (Password/Auth)
     bf_thresholds = {"HIGH": BRUTE_FORCE_HIGH_THRESHOLD, "CRITICAL": BRUTE_FORCE_CRITICAL_THRESHOLD}
@@ -360,8 +358,14 @@ st.sidebar.header("🔍 Controls i Filtres")
 ip_search = st.sidebar.text_input("Cercar per IP", help="Filtra per una IP específica. Ex: 192.168.1.100")
 
 if not alerts_df.empty:
-    all_levels = sorted(alerts_df['level'].unique(), key=lambda x: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].index(x) if x in ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] else 99)
-    level_filter = st.sidebar.multoselect("Filtrar per Nivell", 
+    # ★★★ CORRECCIÓ DE L'ERROR ★★★
+    # Filtrem valors None (nuls) que poden venir de la BD i trencar el multiselect
+    valid_levels = [lvl for lvl in alerts_df['level'].unique() if lvl is not None and pd.notna(lvl)]
+    
+    all_levels = sorted(valid_levels, key=lambda x: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].index(x) if x in ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] else 99)
+    
+    # Ara 'options' sempre serà una llista neta
+    level_filter = st.sidebar.multiselect("Filtrar per Nivell", 
                                         options=all_levels, 
                                         help="Selecciona els nivells d'alerta a mostrar.")
 else:
@@ -398,16 +402,19 @@ else:
         st.subheader("📈 Gràfic Temporal d'Alertes")
         st.caption("Nombre d'alertes generades per hora (basat en l'hora del log).")
         
-        # ★ CORRECCIÓ GRÀFIC (Part 2): Convertir a DF simple abans de 'barchart' ★
         if 'event_timestamp_dt' in filtered_df.columns:
-            alerts_per_hour = filtered_df.set_index('event_timestamp_dt').resample('h').size()
-            if alerts_per_hour.empty:
-                st.caption("No hi ha dades per mostrar al gràfic temporal.")
+            # Assegurem que no hi hagi valors nuls a la columna del temps
+            time_data = filtered_df.dropna(subset=['event_timestamp_dt'])
+            if not time_data.empty:
+                alerts_per_hour = time_data.set_index('event_timestamp_dt').resample('h').size()
+                if alerts_per_hour.empty:
+                    st.caption("No hi ha dades per mostrar al gràfic temporal.")
+                else:
+                    alerts_per_hour_df = alerts_per_hour.reset_index()
+                    alerts_per_hour_df.columns = ['Hora', 'Nombre d\'alertes']
+                    st.bar_chart(alerts_per_hour_df, x='Hora', y='Nombre d\'alertes', use_container_width=True)
             else:
-                # Convertim l'índex de temps en una columna per a st.barchart
-                alerts_per_hour_df = alerts_per_hour.reset_index()
-                alerts_per_hour_df.columns = ['Hora', 'Nombre d\'alertes']
-                st.bar_chart(alerts_per_hour_df, x='Hora', y='Nombre d\'alertes', use_container_width=True)
+                 st.caption("No hi ha dades temporals vàlides per mostrar.")
         else:
             st.caption("No s'han pogut extreure les dades temporals.")
 
@@ -425,14 +432,20 @@ else:
     st.subheader("🔔 Resum d'Alertes")
     st.caption("Visió ràpida de les alertes filtrades.")
     
-    summary_df = filtered_df[['event_timestamp_dt', 'ip_source', 'level', 'message']]
-    summary_df = summary_df.rename(columns={
-        'event_timestamp_dt': "Data de l'Event",
-        'ip_source': "IP d'Origen",
-        'level': 'Severitat',
-        'message': 'Motiu (Descripció)'
-    })
-    st.dataframe(summary_df.sort_values(by="Data de l'Event", ascending=False), use_container_width=True)
+    # Assegurem que les columnes existeixen abans d'intentar crear el resum
+    cols_per_resum = ['event_timestamp_dt', 'ip_source', 'level', 'message']
+    if all(col in filtered_df.columns for col in cols_per_resum):
+        summary_df = filtered_df[cols_per_resum]
+        summary_df = summary_df.rename(columns={
+            'event_timestamp_dt': "Data de l'Event",
+            'ip_source': "IP d'Origen",
+            'level': 'Severitat',
+            'message': 'Motiu (Descripció)'
+        })
+        st.dataframe(summary_df.sort_values(by="Data de l'Event", ascending=False), use_container_width=True)
+    else:
+        st.warning("No s'ha pogut generar el resum d'alertes. Faltes columnes.")
+
 
     with st.expander("Veure Registre Detallat Complet (Totes les Columnes)"):
         st.dataframe(filtered_df, use_container_width=True)
