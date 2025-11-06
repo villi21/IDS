@@ -1,81 +1,140 @@
 # =========================================================
-# DIA 1: 10 OCTUBRE (Atacs forts)
+# DIA 1: 10 OCTUBRE - TOTAL: 2 CRITICAL, 3 HIGH
 # =========================================================
-# BLOC 1.1: Atac CRITICAL (11 intents)
-Oct 10 11:00:01 server sshd[1001]: Failed password for root from 192.168.1.100 port 55001 ssh2
-Oct 10 11:00:05 server sshd[1002]: Failed password for root from 192.168.1.100 port 55002 ssh2
-Oct 10 11:00:10 server sshd[1003]: Failed password for root from 192.168.1.100 port 55003 ssh2
-Oct 10 11:00:15 server sshd[1004]: Failed password for root from 192.168.1.100 port 55004 ssh2
-Oct 10 11:00:20 server sshd[1005]: Failed password for root from 192.168.1.100 port 55005 ssh2
-Oct 10 11:00:25 server sshd[1006]: Failed password for root from 192.168.1.100 port 55006 ssh2
-Oct 10 11:00:30 server sshd[1007]: Failed password for root from 192.168.1.100 port 55007 ssh2
-Oct 10 11:00:35 server sshd[1008]: Failed password for root from 192.168.1.100 port 55008 ssh2
-Oct 10 11:00:40 server sshd[1009]: Failed password for root from 192.168.1.100 port 55009 ssh2
-Oct 10 11:00:45 server sshd[1010]: Failed password for root from 192.168.1.100 port 55010 ssh2
-Oct 10 11:00:50 server sshd[1011]: Failed password for root from 192.168.1.100 port 55011 ssh2
 
-# BLOC 1.2: Atac HIGH (4 intents)
-Oct 10 13:30:01 server sshd[2001]: Failed password for root from 11.22.33.44 port 4321 ssh2
-Oct 10 13:30:03 server sshd[2002]: Failed password for root from 11.22.33.44 port 4322 ssh2
-Oct 10 13:30:05 server sshd[2003]: Failed password for root from 11.22.33.44 port 4323 ssh2
-Oct 10 13:30:07 server sshd[2004]: Failed password for root from 11.22.33.44 port 4324 ssh2
+# --- ATAC CRITICAL 1 (6 intents pass) ---
+Oct 10 09:10:01 server sshd[1001]: Failed password for root from 1.1.1.1 port 55001 ssh2
+Oct 10 09:10:05 server sshd[1002]: Failed password for root from 1.1.1.1 port 55002 ssh2
+Oct 10 09:10:10 server sshd[1003]: Failed password for root from 1.1.1.1 port 55003 ssh2
+Oct 10 09:10:15 server sshd[1004]: Failed password for root from 1.1.1.1 port 55004 ssh2
+Oct 10 09:10:20 server sshd[1005]: Failed password for root from 1.1.1.1 port 55005 ssh2
+Oct 10 09:10:25 server sshd[1006]: Failed password for root from 1.1.1.1 port 55006 ssh2
 
-# BLOC 1.3: Trànsit normal
-Oct 10 14:00:01 server sshd[2010]: Accepted password for good_user from 1.2.3.4 port 12345 ssh2
-Oct 10 14:00:02 server sshd[2010]: pam_unix(sshd:session): session opened for user good_user by (uid=0)
-Oct 10 14:01:00 server sshd[2010]: pam_unix(sshd:session): session closed for user good_user
+# --- ATAC CRITICAL 2 (5 intents pass) ---
+Oct 10 09:15:01 server sshd[1101]: Failed password for admin from 1.1.1.2 port 55001 ssh2
+Oct 10 09:15:05 server sshd[1102]: Failed password for admin from 1.1.1.2 port 55002 ssh2
+Oct 10 09:15:10 server sshd[1103]: Failed password for admin from 1.1.1.2 port 55003 ssh2
+Oct 10 09:15:15 server sshd[1104]: Failed password for admin from 1.1.1.2 port 55004 ssh2
+Oct 10 09:15:20 server sshd[1105]: Failed password for admin from 1.1.1.2 port 55005 ssh2
 
-# =========================================================
-# DIA 2: 11 OCTUBRE (Més soroll)
-# =========================================================
-# BLOC 2.1: Atac MEDIUM (6 intents 'Invalid user')
-Oct 11 09:15:01 server sshd[3001]: Invalid user admin from 10.40.1.12 port 10001 ssh2
-Oct 11 09:15:03 server sshd[3002]: Invalid user administrator from 10.40.1.12 port 10002 ssh2
-Oct 11 09:15:05 server sshd[3003]: Invalid user support from 10.40.1.12 port 10003 ssh2
-Oct 11 09:15:07 server sshd[3004]: Invalid user guest from 10.40.1.12 port 10004 ssh2
-Oct 11 09:15:09 server sshd[3005]: Invalid user test from 10.40.1.12 port 10005 ssh2
-Oct 11 09:15:11 server sshd[3006]: Invalid user webmaster from 10.40.1.12 port 10006 ssh2
+# --- ATAC HIGH 1 (3 intents pass) ---
+Oct 10 14:05:01 server sshd[1201]: Failed password for user from 2.2.2.1 port 55001 ssh2
+Oct 10 14:05:05 server sshd[1202]: Failed password for user from 2.2.2.1 port 55002 ssh2
+Oct 10 14:05:10 server sshd[1203]: Failed password for user from 2.2.2.1 port 55003 ssh2
 
-# BLOC 2.2: Atac LOW (3 intents 'Invalid user')
-Oct 11 10:01:20 server sshd[4001]: Invalid user bob from 203.0.113.50 port 9990 ssh2
-Oct 11 10:01:25 server sshd[4002]: Invalid user alice from 203.0.113.50 port 9991 ssh2
-Oct 11 10:01:30 server sshd[4003]: Invalid user charlie from 203.0.113.50 port 9992 ssh2
+# --- ATAC HIGH 2 (4 intents pass) ---
+Oct 10 14:10:01 server sshd[1301]: Failed password for ubuntu from 2.2.2.2 port 55001 ssh2
+Oct 10 14:10:05 server sshd[1302]: Failed password for ubuntu from 2.2.2.2 port 55002 ssh2
+Oct 10 14:10:10 server sshd[1303]: Failed password for ubuntu from 2.2.2.2 port 55003 ssh2
+Oct 10 14:10:15 server sshd[1304]: Failed password for ubuntu from 2.2.2.2 port 55004 ssh2
 
-# BLOC 2.3: Atac LOW (4 intents 'Invalid user')
-Oct 11 11:30:01 server sshd[5001]: Invalid user user1 from 8.8.4.4 port 1001 ssh2
-Oct 11 11:30:05 server sshd[5002]: Invalid user user2 from 8.8.4.4 port 1002 ssh2
-Oct 11 11:30:10 server sshd[5003]: Invalid user user3 from 8.8.4.4 port 1003 ssh2
-Oct 11 11:30:15 server sshd[5004]: Invalid user user4 from 8.8.4.4 port 1004 ssh2
-
-# BLOC 2.4: Atac HIGH (3 intents 'Failed pass')
-Oct 11 12:00:01 server sshd[6001]: Failed password for admin_user from 1.1.1.1 port 2001 ssh2
-Oct 11 12:00:05 server sshd[6002]: Failed password for admin_user from 1.1.1.1 port 2002 ssh2
-Oct 11 12:00:10 server sshd[6003]: Failed password for admin_user from 1.1.1.1 port 2003 ssh2
+# --- ATAC HIGH 3 (3 intents pass) ---
+Oct 10 14:15:01 server sshd[1401]: Failed password for ec2-user from 2.2.2.3 port 55001 ssh2
+Oct 10 14:15:05 server sshd[1402]: Failed password for ec2-user from 2.2.2.3 port 55002 ssh2
+Oct 10 14:15:10 server sshd[1403]: Failed password for ec2-user from 2.2.2.3 port 55003 ssh2
 
 # =========================================================
-# DIA 3: 12 OCTUBRE (Múltiples atacs petits)
+# DIA 2: 11 OCTUBRE - TOTAL: 5 MEDIUM
 # =========================================================
-# BLOC 3.1: Atac LOW (3 intents)
-Oct 12 08:00:01 server sshd[7001]: Invalid user ftp from 2.2.2.2 port 3001 ssh2
-Oct 12 08:00:03 server sshd[7002]: Invalid user test from 2.2.2.2 port 3002 ssh2
-Oct 12 08:00:05 server sshd[7003]: Invalid user git from 2.2.2.2 port 3003 ssh2
 
-# BLOC 3.2: Atac LOW (3 intents)
-Oct 12 08:05:01 server sshd[7004]: Invalid user db from 2.2.2.2 port 3004 ssh2
-Oct 12 08:05:03 server sshd[7005]: Invalid user sql from 2.2.2.2 port 3005 ssh2
-Oct 12 08:05:05 server sshd[7006]: Invalid user user from 2.2.2.2 port 3006 ssh2
-# Nota: Això són 2 atacs LOW separats per > 60s
+# --- ATAC MEDIUM 1 (5 intents user) ---
+Oct 11 09:00:01 server sshd[2001]: Invalid user admin from 3.3.3.1 port 1001 ssh2
+Oct 11 09:00:02 server sshd[2002]: Invalid user administrator from 3.3.3.1 port 1002 ssh2
+Oct 11 09:00:03 server sshd[2003]: Invalid user user from 3.3.3.1 port 1003 ssh2
+Oct 11 09:00:04 server sshd[2004]: Invalid user guest from 3.3.3.1 port 1004 ssh2
+Oct 11 09:00:05 server sshd[2005]: Invalid user test from 3.3.3.1 port 1005 ssh2
 
-# BLOC 3.3: Atac CRITICAL (5 intents)
-Oct 12 10:10:10 server sshd[8001]: Failed password for root from 3.3.3.3 port 4001 ssh2
-Oct 12 10:10:12 server sshd[8002]: Failed password for root from 3.3.3.3 port 4002 ssh2
-Oct 12 10:10:14 server sshd[8003]: Failed password for root from 3.3.3.3 port 4003 ssh2
-Oct 12 10:10:16 server sshd[8004]: Failed password for root from 3.3.3.3 port 4004 ssh2
-Oct 12 10:10:18 server sshd[8005]: Failed password for root from 3.3.3.3 port 4005 ssh2
+# --- ATAC MEDIUM 2 (6 intents user) ---
+Oct 11 09:05:01 server sshd[2101]: Invalid user web from 3.3.3.2 port 1001 ssh2
+Oct 11 09:05:02 server sshd[2102]: Invalid user db from 3.3.3.2 port 1002 ssh2
+Oct 11 09:05:03 server sshd[2103]: Invalid user sql from 3.3.3.2 port 1003 ssh2
+Oct 11 09:05:04 server sshd[2104]: Invalid user api from 3.3.3.2 port 1004 ssh2
+Oct 11 09:05:05 server sshd[2105]: Invalid user ftp from 3.3.3.2 port 1005 ssh2
+Oct 11 09:05:06 server sshd[2106]: Invalid user sftp from 3.3.3.2 port 1006 ssh2
 
-# BLOC 3.4: Atac MEDIUM (5 intents)
-Oct 12 11:00:01 server sshd[9001]: Invalid user team from 4.4.4.4 port 5001 ssh2
-Oct 12 11:00:02 server sshd[9002]: Invalid user staff from 4.4.4.4 port 5002 ssh2
-Oct 12 11:00:03 server sshd[9003]: Invalid user dev from 4.4.4.4 port 5003 ssh2
-Oct 12 11:00:04 server sshd[9004]: Invalid user ops from 4.4.4.4 port 5004 ssh2
-Oct 12 11:00:05 server sshd[9005]: Invalid user admin from 4.4.4.4 port 5005 ssh2
+# --- ATAC MEDIUM 3 (5 intents user) ---
+Oct 11 09:10:01 server sshd[2201]: Invalid user oracle from 3.3.3.3 port 1001 ssh2
+Oct 11 09:10:02 server sshd[2202]: Invalid user postgres from 3.3.3.3 port 1002 ssh2
+Oct 11 09:10:03 server sshd[2203]: Invalid user mysql from 3.3.3.3 port 1003 ssh2
+Oct 11 09:10:04 server sshd[2204]: Invalid user mssql from 3.3.3.3 port 1004 ssh2
+Oct 11 09:10:05 server sshd[2205]: Invalid user root from 3.3.3.3 port 1005 ssh2
+
+# --- ATAC MEDIUM 4 (7 intents user) ---
+Oct 11 15:00:01 server sshd[2301]: Invalid user info from 3.3.3.4 port 1001 ssh2
+Oct 11 15:00:02 server sshd[2302]: Invalid user sales from 3.3.3.4 port 1002 ssh2
+Oct 11 15:00:03 server sshd[2303]: Invalid user support from 3.3.3.4 port 1003 ssh2
+Oct 11 15:00:04 server sshd[2304]: Invalid user contact from 3.3.3.4 port 1004 ssh2
+Oct 11 15:00:05 server sshd[2305]: Invalid user dev from 3.3.3.4 port 1005 ssh2
+Oct 11 15:00:06 server sshd[2306]: Invalid user ops from 3.3.3.4 port 1006 ssh2
+Oct 11 15:00:07 server sshd[2307]: Invalid user git from 3.3.3.4 port 1007 ssh2
+
+# --- ATAC MEDIUM 5 (5 intents user) ---
+Oct 11 15:05:01 server sshd[2401]: Invalid user pi from 3.3.3.5 port 1001 ssh2
+Oct 11 15:05:02 server sshd[2402]: Invalid user ubuntu from 3.3.3.5 port 1002 ssh2
+Oct 11 15:05:03 server sshd[2403]: Invalid user debian from 3.3.3.5 port 1003 ssh2
+Oct 11 15:05:04 server sshd[2404]: Invalid user fedora from 3.3.3.5 port 1004 ssh2
+Oct 11 15:05:05 server sshd[2405]: Invalid user centos from 3.3.3.5 port 1005 ssh2
+
+# =========================================================
+# DIA 3: 12 OCTUBRE - TOTAL: 11 LOW
+# =========================================================
+
+# --- ATAC LOW 1 (3 intents user) ---
+Oct 12 08:00:01 server sshd[3001]: Invalid user a from 4.4.4.1 port 1001 ssh2
+Oct 12 08:00:02 server sshd[3002]: Invalid user b from 4.4.4.1 port 1002 ssh2
+Oct 12 08:00:03 server sshd[3003]: Invalid user c from 4.4.4.1 port 1003 ssh2
+
+# --- ATAC LOW 2 (4 intents user) ---
+Oct 12 08:05:01 server sshd[3101]: Invalid user d from 4.4.4.2 port 1001 ssh2
+Oct 12 08:05:02 server sshd[3102]: Invalid user e from 4.4.4.2 port 1002 ssh2
+Oct 12 08:05:03 server sshd[3103]: Invalid user f from 4.4.4.2 port 1003 ssh2
+Oct 12 08:0iOS:04 server sshd[3104]: Invalid user g from 4.4.4.2 port 1004 ssh2
+
+# --- ATAC LOW 3 (3 intents user) ---
+Oct 12 08:10:01 server sshd[3201]: Invalid user h from 4.4.4.3 port 1001 ssh2
+Oct 12 08:10:02 server sshd[3202]: Invalid user i from 4.4.4.3 port 1002 ssh2
+Oct 12 08:10:03 server sshd[3203]: Invalid user j from 4.4.4.3 port 1003 ssh2
+
+# --- ATAC LOW 4 (4 intents user) ---
+Oct 12 08:15:01 server sshd[3301]: Invalid user k from 4.4.4.4 port 1001 ssh2
+Oct 12 08:15:02 server sshd[3302]: Invalid user l from 4.4.4.4 port 1002 ssh2
+Oct 12 08:15:03 server sshd[3303]: Invalid user m from 4.4.4.4 port 1003 ssh2
+Oct 12 08:15:04 server sshd[3304]: Invalid user n from 4.4.4.4 port 1004 ssh2
+
+# --- ATAC LOW 5 (3 intents user) ---
+Oct 12 08:20:01 server sshd[3401]: Invalid user o from 4.4.4.5 port 1001 ssh2
+Oct 12 08:20:02 server sshd[3402]: Invalid user p from 4.4.4.5 port 1002 ssh2
+Oct 12 08:20:03 server sshd[3403]: Invalid user q from 4.4.4.5 port 1003 ssh2
+
+# --- ATAC LOW 6 (4 intents user) ---
+Oct 12 08:25:01 server sshd[3501]: Invalid user r from 4.4.4.6 port 1001 ssh2
+Oct 12 08:25:02 server sshd[3502]: Invalid user s from 4.4.4.6 port 1002 ssh2
+Oct 12 08:25:03 server sshd[3503]: Invalid user t from 4.4.4.6 port 1003 ssh2
+Oct 12 08:25:04 server sshd[3504]: Invalid user u from 4.4.4.6 port 1004 ssh2
+
+# --- ATAC LOW 7 (3 intents user) ---
+Oct 12 08:30:01 server sshd[3601]: Invalid user v from 4.4.4.7 port 1001 ssh2
+Oct 12 08:30:02 server sshd[3602]: Invalid user w from 4.4.4.7 port 1002 ssh2
+Oct 12 08:30:03 server sshd[3603]: Invalid user x from 4.4.4.7 port 1003 ssh2
+
+# --- ATAC LOW 8 (4 intents user) ---
+Oct 12 08:35:01 server sshd[3701]: Invalid user y from 4.4.4.8 port 1001 ssh2
+Oct 12 08:35:02 server sshd[3702]: Invalid user z from 4.4.4.8 port 1002 ssh2
+Oct 12 08:35:03 server sshd[3703]: Invalid user aa from 4.4.4.8 port 1003 ssh2
+Oct 12 08:35:04 server sshd[3704]: Invalid user bb from 4.4.4.8 port 1004 ssh2
+
+# --- ATAC LOW 9 (3 intents user) ---
+Oct 12 08:40:01 server sshd[3801]: Invalid user cc from 4.4.4.9 port 1001 ssh2
+Oct 12 08:40:02 server sshd[3802]: Invalid user dd from 4.4.4.9 port 1002 ssh2
+Oct 12 08:40:03 server sshd[3803]: Invalid user ee from 4.4.4.9 port 1003 ssh2
+
+# --- ATAC LOW 10 (4 intents user) ---
+Oct 12 08:45:01 server sshd[3901]: Invalid user ff from 4.4.4.10 port 1001 ssh2
+Oct 12 08:45:02 server sshd[3902]: Invalid user gg from 4.4.4.10 port 1002 ssh2
+Oct 12 08:45:03 server sshd[3903]: Invalid user hh from 4.4.4.10 port 1003 ssh2
+Oct 12 08:45:04 server sshd[3904]: Invalid user ii from 4.4.4.10 port 1004 ssh2
+
+# --- ATAC LOW 11 (3 intents user) ---
+Oct 12 08:50:01 server sshd[4001]: Invalid user jj from 4.4.4.11 port 1001 ssh2
+Oct 12 08:50:02 server sshd[4002]: Invalid user kk from 4.4.4.11 port 1002 ssh2
+Oct 12 08:50:03 server sshd[4003]: Invalid user ll from 4.4.4.11 port 1003 ssh2
