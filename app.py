@@ -11,8 +11,8 @@ import uuid
 import sqlite3
 import json
 import logging
-import streamlit as st  # <-- Nueva importación
-import pandas as pd     # <-- Nueva importación
+import streamlit as st
+import pandas as pd
 
 # ======== CONFIGURACIÓ GENERAL ========
 LOG_PATH = "sample.log"
@@ -38,7 +38,7 @@ USER_RE = re.compile(r"for\s+(\w+)")
 
 # =========================================================
 # CLASSE DE GESTIÓ D'ALERTES AVANÇADA
-# (Exactament el teu codi original)
+# (El teu codi original)
 # =========================================================
 
 class AlertManager:
@@ -72,11 +72,12 @@ class AlertManager:
                         last_updated TEXT NOT NULL
                     );
                 """)
-                # Hem tret el print() d'aquí per no "brutar" la consola del servidor
         except Exception as e:
-            # En lloc de print(), fem servir el logger
             logger.error(f"❌ Error en crear la taula: {e}")
-            st.error(f"Error en crear la taula de la BD: {e}") # I ho mostrem a la UI
+            try:
+                st.error(f"Error en crear la taula de la BD: {e}")
+            except:
+                pass 
 
     def save_alert(self, alert: dict):
         if "level" not in alert or "message" not in alert:
@@ -115,7 +116,7 @@ class AlertManager:
 
 # =========================================================
 # FUNCIONS DE DETECCIÓ
-# (Exactament el teu codi original)
+# (El teu codi original)
 # =========================================================
 
 def read_log(path: str):
@@ -234,23 +235,31 @@ def load_all_alerts(_manager):
     El paràmetre '_manager' només hi és per invalidar la cache quan canvia.
     """
     try:
-        conn = _manager._get_connection()[0] # Obtenim la connexió
+        conn = _manager._get_connection()[0] 
         df = pd.read_sql_query("SELECT * FROM alerts ORDER BY created_at DESC", conn)
         conn.close()
         
-        # Processem el metadata (que és JSON) per a una millor visualització
         if 'metadata' in df.columns:
-            df['metadata'] = df['metadata'].apply(lambda x: json.loads(x) if x else None)
+            # Funció helper per extreure la IP
+            def get_ip_from_metadata(metadata):
+                if metadata:
+                    try:
+                        data = json.loads(metadata)
+                        if isinstance(data, dict) and 'ip' in data:
+                            return data.get('ip')
+                    except json.JSONDecodeError:
+                        return 'N/A'
+                return 'N/A'
+            
+            df['ip_source'] = df['metadata'].apply(get_ip_from_metadata)
+        else:
+            df['ip_source'] = 'N/A'
+            
         return df
     except Exception as e:
         st.error(f"Error en llegir la base de dades 'alerts.db': {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(columns=['id', 'created_at', 'level', 'message', 'source', 'metadata', 'ip_source'])
 
-def get_ip_from_metadata(metadata):
-    """Funció helper per extreure la IP del camp metadata."""
-    if isinstance(metadata, dict) and 'ip' in metadata:
-        return metadata.get('ip')
-    return 'N/A'
 
 # =========================================================
 # INTERFÍCIE WEB (Streamlit)
@@ -267,14 +276,14 @@ st.title("🛡️ Dashboard de Detección de Intrusos (IDS SSH)")
 manager = get_alert_manager()
 
 # --- Secció 1: Executar Anàlisi ---
-st.subheader("Executar Anàlisi Manual")
-if st.button("Analitzar 'sample.log' ara"):
-    with st.spinner("Processant el fitxer de log..."):
-        failed_count, alerts_count = run_analysis(manager)
-    
-    st.success(f"Anàlisi completada! Intents fallits detectats: **{failed_count}**. Noves alertes generades: **{alerts_count}**.")
-    # Forcem la recàrrega de les dades (invalidant la cache)
-    st.cache_data.clear()
+with st.expander("Executar Anàlisi Manual", expanded=False):
+    if st.button("Analitzar 'sample.log' ara"):
+        with st.spinner("Processant el fitxer de log..."):
+            failed_count, alerts_count = run_analysis(manager)
+        
+        st.success(f"Anàlisi completada! Intents fallits detectats: **{failed_count}**. Noves alertes generades: **{alerts_count}**.")
+        # Forcem la recàrrega de les dades (invalidant la cache)
+        st.cache_data.clear()
 
 st.markdown("---")
 
@@ -284,11 +293,32 @@ st.header("Alertes de Seguretat Registrades")
 # Carregar dades
 alerts_df = load_all_alerts(manager)
 
-if alerts_df.empty:
-    st.info("No s'ha trobat cap alerta a la base de dades. Executa una anàlisi.")
+# --- ★ NOU: Barra lateral de Filtres (Sprint 3) ★ ---
+st.sidebar.header("Filtres i Cerca")
+
+# Filtre de Cerca per IP
+ip_search = st.sidebar.text_input("Cercar per IP")
+
+# Filtre de Severitat (Nivell)
+all_levels = alerts_df['level'].unique()
+level_filter = st.sidebar.multiselect("Filtrar per Nivell", options=all_levels, default=all_levels)
+
+# Aplicar filtres
+if not alerts_df.empty:
+    if ip_search:
+        alerts_df = alerts_df[alerts_df['ip_source'].str.contains(ip_search, case=False, na=False)]
+    
+    if level_filter:
+        alerts_df = alerts_df[alerts_df['level'].isin(level_filter)]
 else:
-    # --- Estadístiques Clau ---
-    st.subheader("Estadístiques Clau")
+    st.info("No s'ha trobat cap alerta a la base de dades. Executa una anàlisi.")
+
+# --- Mostrar Dashboard ---
+if alerts_df.empty and (ip_search or len(level_filter) < len(all_levels)):
+    st.warning("Cap alerta coincideix amb els filtres seleccionats.")
+elif not alerts_df.empty:
+    # --- Estadístiques Clau (ara basades en les dades filtrades) ---
+    st.subheader("Estadístiques (Segons Filtres)")
     total_alerts = len(alerts_df)
     critical_alerts = alerts_df[alerts_df['level'] == 'CRITICAL'].shape[0]
     
@@ -297,18 +327,16 @@ else:
     col2.metric("Alertes Crítiques", critical_alerts)
     col3.metric("Alertes No Reconegudes", alerts_df[alerts_df['acknowledged'] == 0].shape[0])
 
-    # --- Gràfic d'Alertes per IP ---
-    st.subheader("Top IPs amb Alertes")
+    # --- Gràfic d'Alertes per IP (ara basat en les dades filtrades) ---
+    st.subheader("Top IPs amb Alertes (Segons Filtres)")
     
-    # Extraiem la IP del metadata
-    alerts_df['ip_source'] = alerts_df['metadata'].apply(get_ip_from_metadata)
     ip_counts = alerts_df[alerts_df['ip_source'] != 'N/A']['ip_source'].value_counts().head(10)
     
     if not ip_counts.empty:
         st.bar_chart(ip_counts)
     else:
-        st.caption("No s'han trobat dades d'IP a les metadades de les alertes.")
+        st.caption("No s'han trobat dades d'IP per mostrar al gràfic.")
 
-    # --- Taula d'Alertes ---
-    st.subheader("Taula Completa d'Alertes")
+    # --- Taula d'Alertes (ara filtrada) ---
+    st.subheader("Taula Completa d'Alertes (Filtrada)")
     st.dataframe(alerts_df)
