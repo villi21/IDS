@@ -191,13 +191,13 @@ def parse_log_timestamp(date_str: str, base_year: int):
         # Utilitzem l'any base (ex: 2025) que ens passen
         full = f"{date_str} {base_year}"
         ts = datetime.strptime(full, "%b %d %H:%M:%S %Y")
-        
-        # Gestió del canvi d'any: si el log és de "Dec" i estem a "Jan",
-        # és probable que l'any del log sigui l'any *anterior*.
-        # Per a aquest projecte, ho simplifiquem i assumim tot és de l'any base.
         return ts
     except Exception:
-        return None
+        # Si falla, prova sense l'any (menys preferible)
+        try:
+            return datetime.strptime(date_str, "%b %d %H:%M:%S")
+        except:
+            return None
 
 def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_template):
     """
@@ -214,6 +214,7 @@ def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_
             ip_times.setdefault(ip, []).append((ts, att))
 
     alerts = []
+    # Ordenem els llindars de més alt a més baix
     threshold_levels_sorted = sorted(thresholds_dict.items(), key=lambda item: item[1], reverse=True)
 
     for ip, entries in ip_times.items():
@@ -222,18 +223,23 @@ def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_
         if not entries:
             continue
 
+        # Llista per guardar les sessions d'atac d'aquesta IP
         current_session = [entries[0]]
         
         for i in range(1, len(entries)):
             current_entry_ts, _ = entries[i]
             last_entry_ts, _ = current_session[-1]
             
+            # Comprovem si l'intent actual pertany a la sessió
             if (current_entry_ts - last_entry_ts).total_seconds() <= ATTACK_SESSION_WINDOW_SECONDS:
                 current_session.append(entries[i])
             else:
+                # La sessió s'ha tancat. Processem l'anterior.
                 alerts.extend(process_attack_session(current_session, thresholds_dict, threshold_levels_sorted, message_template, ip, failure_type))
+                # Comença una nova sessió
                 current_session = [entries[i]]
         
+        # Processem l'última sessió que queda al buffer
         alerts.extend(process_attack_session(current_session, thresholds_dict, threshold_levels_sorted, message_template, ip, failure_type))
                 
     return alerts
@@ -242,20 +248,23 @@ def process_attack_session(session_entries, thresholds_dict, threshold_levels_so
     """Funció helper per generar l'alerta d'UNA sessió d'atac."""
     count = len(session_entries)
     
+    # Comprovem si el recompte supera el llindar mínim
     min_threshold = min(thresholds_dict.values())
     if count < min_threshold:
         return [] # No és un atac, ignorem
 
+    # Determinem el nivell MÉS ALT assolit
     triggered_level = None
     for level, threshold in threshold_levels_sorted:
         if count >= threshold:
             triggered_level = level
-            break
+            break # Hem trobat el nivell més alt
             
     if triggered_level:
         first_ts, _ = session_entries[0]
         last_ts, last_att = session_entries[-1]
         
+        # Format ISO 8601 (amb T), vital per a JSON i Altair
         last_ts_iso = last_ts.isoformat() 
         first_ts_iso = first_ts.isoformat()
         
@@ -265,7 +274,7 @@ def process_attack_session(session_entries, thresholds_dict, threshold_levels_so
             "source": "SSH IDS",
             "metadata": {
                 "ip": ip,
-                "timestamp": last_ts_iso, # Format ISO 8601 (amb T)
+                "timestamp": last_ts_iso, # Timestamp de l'event (últim intent)
                 "usuari": last_att.get('usuari'),
                 "primer_intent_finestra": first_ts_iso,
                 "total_intents_finestra": count,
@@ -331,8 +340,10 @@ def get_timestamp_from_metadata(metadata_str):
     try:
         data = json.loads(metadata_str)
         if isinstance(data, dict) and 'timestamp' in data:
+            # datetime.fromisoformat pot gestionar el format amb 'T'
             return datetime.fromisoformat(data['timestamp'])
-    except:
+    except Exception as e:
+        logger.warning(f"Error en parsejar timestamp de metadata: {e}")
         return None
     return None
 
@@ -368,8 +379,9 @@ def load_all_alerts(_manager):
             df['ip_source'] = 'N/A'
             df['event_timestamp_dt'] = None
         
-        df['event_timestamp_dt'] = pd.to_datetime(df['event_timestamp_dt'], utc=True)
-        df['event_timestamp_dt'] = df['event_timestamp_dt'].fillna(pd.to_datetime(df['created_at_dt'], utc=True))
+        # Convertim a datetime de pandas. Eliminem 'utc=True' per evitar conflictes.
+        df['event_timestamp_dt'] = pd.to_datetime(df['event_timestamp_dt'])
+        df['event_timestamp_dt'] = df['event_timestamp_dt'].fillna(pd.to_datetime(df['created_at_dt']))
 
         return df
     except Exception as e:
@@ -380,7 +392,7 @@ def load_all_alerts(_manager):
 # INTERFÍCIE WEB (Streamlit)
 # =========================================================
 
-st.set_page_config(page_title="IDS G3 ENTI", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="Dashboard IDS SSH", layout="wide", page_icon="🛡️")
 
 st.title("🛡️ Dashboard d'Analista de Seguretat (IDS SSH)")
 st.caption("Un monitor visual per a la detecció d'intrusions i anàlisi de logs SSH.")
@@ -451,21 +463,22 @@ else:
     col_graph1, col_graph2 = st.columns(2)
     with col_graph1:
         st.subheader("📈 Línia Temporal d'Alertes")
-        st.caption("Activitat d'alertes agrupada per hora (basada en la data de l'event del log).")
+        st.caption("Activitat d'alertes agrupada per dia (basada en la data de l'event del log).")
         
         if 'event_timestamp_dt' in filtered_df.columns:
             time_data = filtered_df.dropna(subset=['event_timestamp_dt'])
             if not time_data.empty:
-                # Agrupem per hora ('h')
-                alerts_per_hour = time_data.set_index('event_timestamp_dt').resample('h').size()
-                if alerts_per_hour.empty:
+                # ★★★ SOLUCIÓ GRÀFIC: Agrupem per DIA ('D') ★★★
+                # El nou log té dades de 3 dies diferents, això funcionarà.
+                alerts_per_day = time_data.set_index('event_timestamp_dt').resample('D').size()
+                if alerts_per_day.empty:
                     st.caption("No hi ha dades per mostrar al gràfic temporal.")
                 else:
-                    alerts_per_hour_df = alerts_per_hour.reset_index()
-                    alerts_per_hour_df.columns = ['Hora', "Nombre d'alertes"]
+                    alerts_per_day_df = alerts_per_day.reset_index()
+                    alerts_per_day_df.columns = ['Dia', "Nombre d'alertes"]
                     
-                    chart = alt.Chart(alerts_per_hour_df).mark_bar().encode(
-                        x=alt.X('Hora:T', title="Data i Hora de l'Event"), 
+                    chart = alt.Chart(alerts_per_day_df).mark_bar().encode(
+                        x=alt.X('Dia:T', title="Data de l'Event"), 
                         y=alt.Y("Nombre d'alertes:Q", title="Nombre d'Alertes")
                     ).interactive() 
                     
