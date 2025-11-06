@@ -153,12 +153,13 @@ def detect_failed_attempts(lines):
     Analitza les línies de log i les classifica per tipus de fallada.
     """
     failed_attempts = []
+    # Per assignar un any base a logs que no en tenen
     current_year = datetime.now().year
     
     for line in lines:
         failure_type = None
         if "Failed password" in line or "authentication failure" in line:
-            failure_type = "password_auth"
+            failure_type = "password_auth" # Agrupem "Failed pass" i "auth failure"
         elif "Invalid user" in line:
             failure_type = "invalid_user"
         
@@ -170,6 +171,7 @@ def detect_failed_attempts(lines):
             date_str = date_match.group(0) if date_match else "Sense data"
             user = user_match.group(1) if user_match else "Desconegut"
             
+            # Passem l'any base al parser
             parsed_date = parse_log_timestamp(date_str, base_year=current_year)
 
             failed_attempts.append({
@@ -192,10 +194,13 @@ def parse_log_timestamp(date_str: str, base_year: int):
         
         # Gestió del canvi d'any: Si el log és de desembre i estem a gener,
         # és probable que l'any del log sigui l'anterior.
+        # Com que el servidor pot estar a 2025, i el log és de 2024 (fictici),
+        # aquesta lògica és important.
         if ts > datetime.now().replace(tzinfo=ts.tzinfo):
              ts = ts.replace(year=base_year - 1)
         return ts
     except Exception:
+        # Si falla, podria ser un log antic sense any. No ho gestionem ara.
         return None
 
 def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_template):
@@ -471,8 +476,9 @@ else:
             if not time_data.empty:
                 
                 # Agrupem per DIA ('D') i comptem cada 'level'
-                alerts_per_day_level = time_data.set_index('event_timestamp_dt').resample('D')['level'].value_counts().reset_index(name='Nombre d'Alertes')
-                alerts_per_day_level.columns = ['Dia', 'Severitat', 'Nombre d\'Alertes']
+                # Assegurem que la data no tingui timezone per a un 'resample' net
+                alerts_per_day_level = time_data.set_index('event_timestamp_dt').tz_localize(None).resample('D')['level'].value_counts().reset_index(name='Nombre d_Alertes')
+                alerts_per_day_level.columns = ['Dia', 'Severitat', 'Nombre d\'Alertes'] # ★ CORRECCIÓ DE SINTAXI AQUÍ ★
 
                 if alerts_per_day_level.empty:
                     st.caption("No hi ha dades per mostrar al gràfic temporal.")
@@ -491,7 +497,7 @@ else:
                                         scale=alt.Scale(domain=domain_, range=range_),
                                         legend=alt.Legend(title="Severitat")),
                         # Tooltip per a detalls
-                        tooltip=['Dia', 'Severitat', 'Nombre d\'Alertes']
+                        tooltip=[alt.Tooltip('Dia', format="%Y-%m-%d"), 'Severitat', 'Nombre d\'Alertes']
                     ).interactive() 
                     
                     st.altair_chart(chart, use_container_width=True)
