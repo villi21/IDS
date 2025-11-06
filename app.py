@@ -289,7 +289,7 @@ def load_all_alerts(_manager):
 # =========================================================
 
 # --- Configuració de la Pàgina ---
-st.set_page_config(page_title="Dashboard IDS SSH", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="IDS G3 ENTI", layout="wide", page_icon="🛡️")
 
 # --- Títol i Descripció ---
 st.title("🛡️ Dashboard d'Analista de Seguretat (IDS SSH)")
