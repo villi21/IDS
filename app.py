@@ -14,7 +14,7 @@ import json
 import logging
 import streamlit as st
 import pandas as pd
-import altair as alt  # <-- ★ NOU IMPORT PER AL GRÀFIC ★
+import altair as alt
 
 # ======== CONFIGURACIÓ GENERAL ========
 LOG_PATH = "sample.log"
@@ -82,7 +82,6 @@ class AlertManager:
             except:
                 pass 
 
-    # --- ★ NOVA FUNCIÓ PER EVITAR DUPLICATS ★ ---
     def clear_alerts(self):
         """Esborra totes les alertes existents de la taula."""
         conn, cursor = self._get_connection()
@@ -243,7 +242,6 @@ def run_analysis(manager):
     Executa el procés d'anàlisi complet i desa les alertes.
     Retorna el recompte d'intents fallits i alertes generades.
     """
-    # --- ★ PAS 1: ESBORRA LES DADES ANTIGUES PER EVITAR DUPLICATS ★ ---
     logger.info("Netejant alertes antigues de la BD...")
     manager.clear_alerts()
     
@@ -342,15 +340,13 @@ def load_all_alerts(_manager):
 # INTERFÍCIE WEB (Streamlit)
 # =========================================================
 
-st.set_page_config(page_title="IDS G3 ENTI", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="Dashboard IDS SSH", layout="wide", page_icon="🛡️")
 
-# --- ★ TÍTOLS (Text polit) ★ ---
 st.title("🛡️ Dashboard d'Analista de Seguretat (IDS SSH)")
 st.caption("Un monitor visual per a la detecció d'intrusions i anàlisi de logs SSH.")
 
 manager = get_alert_manager()
 
-# --- ★ PANELL D'ANÀLISI (Text polit) ★ ---
 with st.expander("Panel de Control d'Anàlisi"):
     st.info("""
     En prémer el botó, el sistema **esborrarà les dades existents** i tornarà a analitzar el fitxer `sample.log` des de zero.
@@ -365,7 +361,6 @@ with st.expander("Panel de Control d'Anàlisi"):
         else:
             st.success(f"Anàlisi completada! Intents fallits detectats: **{failed_count}**. Noves alertes generades: **{alerts_count}**.")
         
-        # Recarreguem les dades de la BD
         st.cache_data.clear()
 
 st.markdown("---")
@@ -373,7 +368,6 @@ st.header("📊 Tauler de Visualització")
 
 alerts_df = load_all_alerts(manager)
 
-# --- ★ FILTRES (Text polit) ★ ---
 st.sidebar.header("🔍 Controls de Visualització")
 ip_search = st.sidebar.text_input("Cerca per IP d'Origen", help="Filtra la vista per una IP específica. Ex: 192.168.1.100")
 
@@ -387,7 +381,6 @@ else:
     all_levels = []
     level_filter = []
 
-# Aplicació de filtres
 if not alerts_df.empty:
     filtered_df = alerts_df.copy()
     if ip_search:
@@ -397,13 +390,11 @@ if not alerts_df.empty:
 else:
     filtered_df = alerts_df.copy()
 
-# Gestió de la vista (buida vs. filtrada)
 if alerts_df.empty:
     st.info("La base de dades està buida. Executeu una anàlisi per carregar dades.")
 elif filtered_df.empty:
     st.warning("Cap alerta coincideix amb els filtres de visualització seleccionats.")
 else:
-    # --- ★ MÈTRIQUES (Text polit) ★ ---
     st.subheader("Mètriques Clau (Segons Filtres)")
     total_alerts = len(filtered_df)
     critical_alerts = filtered_df[filtered_df['level'] == 'CRITICAL'].shape[0]
@@ -415,7 +406,6 @@ else:
     col3.metric("Alertes Pendents", unacknowledged, help="Alertes que encara no han estat marcades com a 'reconegudes'.")
     st.markdown("---")
 
-    # --- ★ GRÀFICS (Text polit i solució Altair) ★ ---
     col_graph1, col_graph2 = st.columns(2)
     with col_graph1:
         st.subheader("📈 Línia Temporal d'Alertes")
@@ -424,20 +414,18 @@ else:
         if 'event_timestamp_dt' in filtered_df.columns:
             time_data = filtered_df.dropna(subset=['event_timestamp_dt'])
             if not time_data.empty:
-                # Agrupem manualment per hora
                 alerts_per_hour = time_data.set_index('event_timestamp_dt').resample('h').size()
                 if alerts_per_hour.empty:
                     st.caption("No hi ha dades per mostrar al gràfic temporal.")
                 else:
-                    # Convertim a DataFrame per Altair
                     alerts_per_hour_df = alerts_per_hour.reset_index()
-                    alerts_per_hour_df.columns = ['Hora', 'Nombre d'alertes']
+                    # --- ★ AQUÍ ESTÀ LA CORRECCIÓ ★ ---
+                    alerts_per_hour_df.columns = ['Hora', "Nombre d'alertes"]
                     
-                    # Creem el gràfic Altair
                     chart = alt.Chart(alerts_per_hour_df).mark_bar().encode(
-                        x=alt.X('Hora:T', title='Hora de l\'Event'), # :T = Temporal
-                        y=alt.Y('Nombre d\'alertes:Q', title='Nombre d\'Alertes') # :Q = Quantitatiu
-                    ).interactive() # Permet zoom i pan
+                        x=alt.X('Hora:T', title='Hora de l\'Event'), 
+                        y=alt.Y("Nombre d'alertes:Q", title='Nombre d\'Alertes')
+                    ).interactive() 
                     
                     st.altair_chart(chart, use_container_width=True)
             else:
@@ -456,7 +444,6 @@ else:
 
     st.markdown("---")
 
-    # --- ★ TAULA RESUM (Text polit) ★ ---
     st.subheader("🔔 Taula de Resum d'Alertes")
     st.caption("Vista ràpida de les alertes que coincideixen amb els filtres.")
     
@@ -473,6 +460,5 @@ else:
     else:
         st.warning("No s'ha pogut generar el resum d'alertes. Faltes columnes.")
 
-    # --- TAULA COMPLETA (Text polit) ---
     with st.expander("Veure Registre de Dades Complet (Totes les Columnes)"):
         st.dataframe(filtered_df, use_container_width=True)
