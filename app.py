@@ -2,7 +2,7 @@
 """
 app.py - Interfaz web per a l'Analista de Seguretat (IDS SSH).
 Inclou visualització de dades, gràfics temporals i filtres interactius.
-(Versió amb lògica d'escalada d'alertes i gràfic temporal corregit)
+(Versió amb lògica de severitat qualitativa i gràfic corregit)
 """
 
 import re
@@ -19,15 +19,11 @@ import pandas as pd
 LOG_PATH = "sample.log"
 WINDOW_SECONDS = 60
 
-# Llindars per a l'escalada d'alertes
-THRESHOLDS = {
-    "LOW": 3,
-    "MEDIUM": 5,
-    "HIGH": 7,
-    "CRITICAL": 10
-}
-# Ordre per a la lògica de comprovació
-LEVEL_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+# Llindars per a la lògica qualitativa
+BRUTE_FORCE_CRITICAL_THRESHOLD = 5
+BRUTE_FORCE_HIGH_THRESHOLD = 3
+SCANNING_MEDIUM_THRESHOLD = 5
+SCANNING_LOW_THRESHOLD = 3
 
 # ======== CONFIGURACIÓ DEL LOGGER ========
 logging.basicConfig(
@@ -47,7 +43,6 @@ USER_RE = re.compile(r"for\s+(\w+)")
 # =========================================================
 # CLASSE DE GESTIÓ D'ALERTES AVANÇADA
 # =========================================================
-
 class AlertManager:
     """Gestor d'alertes amb emmagatzematge dual (fitxer + BD)."""
     
@@ -138,9 +133,20 @@ def filter_lines(lines):
     return [l for l in lines if RELEVANT_RE.search(l)]
 
 def detect_failed_attempts(lines):
+    """
+    Analitza les línies de log i les classifica per tipus de fallada.
+    """
     failed_attempts = []
     for line in lines:
-        if "Failed password" in line or "Invalid user" in line or "authentication failure" in line:
+        failure_type = None
+        if "Failed password" in line:
+            failure_type = "password"
+        elif "authentication failure" in line:
+            failure_type = "auth_failure"
+        elif "Invalid user" in line:
+            failure_type = "invalid_user"
+        
+        if failure_type:
             ip_match = IP_RE.search(line)
             date_match = DATE_RE.search(line)
             user_match = USER_RE.search(line)
@@ -151,7 +157,8 @@ def detect_failed_attempts(lines):
                 "data": date,
                 "usuari": user,
                 "ip": ip,
-                "missatge": line
+                "missatge": line,
+                "failure_type": failure_type
             })
     return failed_attempts
 
@@ -160,68 +167,58 @@ def parse_log_timestamp(date_str: str):
         return None
     try:
         year = datetime.now().year
-        # ★ CORRECCIÓ: Fem que l'any sigui 2024 (o un any fix) per consistència
-        # Si no, un log de "Oct 10" s'interpretaria com "Oct 10, 2025" (any actual del servidor)
-        # Anem a forçar-lo a un any comú, p.ex. 2024
-        # O millor, agafem l'any actual i ja està, assumint que els logs són recents.
-        # El problema és si el log és de Desembre i estem a Gener.
-        # Solució simple: utilitzar l'any actual.
         full = f"{date_str} {year}"
         return datetime.strptime(full, "%b %d %H:%M:%S %Y")
     except Exception:
         return None
 
-def detect_brute_force(failed_attempts, window_seconds=WINDOW_SECONDS):
+def run_detection_logic(failed_attempts, failure_types, thresholds, levels, message_template, window_seconds=WINDOW_SECONDS):
+    """
+    Funció genèrica per a la detecció basada en finestra de temps.
+    """
     ip_times = {}
     for att in failed_attempts:
-        ip = att.get("ip", "Desconeguda")
-        ts = parse_log_timestamp(att.get("data", ""))
-        if ts is None:
-            continue
-        ip_times.setdefault(ip, []).append((ts, att))
+        if att.get("failure_type") in failure_types:
+            ip = att.get("ip", "Desconeguda")
+            ts = parse_log_timestamp(att.get("data", ""))
+            if ts is None:
+                continue
+            ip_times.setdefault(ip, []).append((ts, att))
 
     alerts = []
     for ip, entries in ip_times.items():
         entries.sort(key=lambda x: x[0]) 
         
-        # ★ NOVA LÒGICA D'ESCALADA D'ALERTES ★
-        # Un diccionari per rastrejar quins llindars s'han alertat JA
-        # per a la finestra actual (marcat per 'left')
-        alerted_at_index = {"LOW": -1, "MEDIUM": -1, "HIGH": -1, "CRITICAL": -1}
+        alerted_at_index = {level: -1 for level in levels}
         
         left = 0
         for right in range(len(entries)):
-            # Expandeix la finestra de temps
             while left <= right and (entries[right][0] - entries[left][0]).total_seconds() > window_seconds:
                 left += 1
-                # Quan la finestra es mou, reseteja els rastrejadors d'alertes
-                alerted_at_index = {"LOW": -1, "MEDIUM": -1, "HIGH": -1, "CRITICAL": -1}
+                alerted_at_index = {level: -1 for level in levels}
 
             count = right - left + 1
             
-            # Comprova si s'ha superat un nou llindar
-            for level in LEVEL_ORDER: # Comprova de CRITICAL cap a LOW
-                threshold = THRESHOLDS[level]
+            # Comprova del llindar més alt al més baix
+            for level in reversed(levels): # Ex: ["HIGH", "CRITICAL"] -> comprova CRITICAL primer
+                threshold = thresholds[level]
                 if count >= threshold and alerted_at_index[level] < left:
-                    # S'ha superat un nou llindar que no s'havia alertat en aquesta finestra
                     last_ts, last_att = entries[right]
                     alerts.append({
                         "level": level,
-                        "message": f"Atac esdevingut {level}: {count} intents des de {ip} en {window_seconds}s.",
+                        "message": message_template.format(level=level, count=count, ip=ip, seconds=window_seconds),
                         "source": "SSH IDS",
                         "metadata": {
                             "ip": ip,
                             "timestamp": last_ts.isoformat(sep=' '), # Timestamp de l'event
                             "usuari": last_att.get('usuari'),
                             "primer_intent_finestra": entries[left][0].isoformat(sep=' '),
-                            "total_intents_finestra": count
+                            "total_intents_finestra": count,
+                            "attack_type": failure_types[0] # Simplificació
                         }
                     })
-                    # Marca aquest nivell com alertat per a aquesta finestra
                     alerted_at_index[level] = left
-                    # Important: No reiniciem 'left', permetem que la finestra segueixi creixent
-                    # i pugui escalar a un nivell superior.
-                    break # Només genera una alerta (la més alta) per a aquest intent
+                    break # Genera només 1 alerta per intent
                 
     return alerts
 
@@ -241,8 +238,23 @@ def run_analysis(manager):
         
     relevant = filter_lines(lines)
     failed = detect_failed_attempts(relevant)
-    alerts = detect_brute_force(failed)
 
+    # ★ LÒGICA DE DETECCIÓ QUALITATIVA ★
+    
+    # 1. Detecció de Força Bruta (Password/Auth)
+    bf_thresholds = {"HIGH": BRUTE_FORCE_HIGH_THRESHOLD, "CRITICAL": BRUTE_FORCE_CRITICAL_THRESHOLD}
+    bf_levels = ["HIGH", "CRITICAL"]
+    bf_message = "Atac Força Bruta ({level}): {count} intents de contrasenya des de {ip} en {seconds}s."
+    brute_force_alerts = run_detection_logic(failed, ["password", "auth_failure"], bf_thresholds, bf_levels, bf_message)
+
+    # 2. Detecció d'Escaneig d'Usuaris
+    scan_thresholds = {"LOW": SCANNING_LOW_THRESHOLD, "MEDIUM": SCANNING_MEDIUM_THRESHOLD}
+    scan_levels = ["LOW", "MEDIUM"]
+    scan_message = "Escaneig d'Usuaris ({level}): {count} intents d'usuari invàlid des de {ip} en {seconds}s."
+    scanning_alerts = run_detection_logic(failed, ["invalid_user"], scan_thresholds, scan_levels, scan_message)
+
+    alerts = brute_force_alerts + scanning_alerts
+    
     alerts_saved_count = 0
     if alerts:
         for alert in alerts:
@@ -261,7 +273,6 @@ def get_alert_manager():
     """Crea una única instància del gestor d'alertes."""
     return AlertManager()
 
-# ★ NOVA FUNCIÓ HELPER PER CORREGIR GRÀFIC ★
 def get_timestamp_from_metadata(metadata_str):
     """Intenta extreure el timestamp de l'event des del JSON de metadata."""
     if not metadata_str:
@@ -269,7 +280,6 @@ def get_timestamp_from_metadata(metadata_str):
     try:
         data = json.loads(metadata_str)
         if isinstance(data, dict) and 'timestamp' in data:
-            # Converteix el timestamp ISO a objecte datetime
             return datetime.fromisoformat(data['timestamp'])
     except:
         return None
@@ -288,10 +298,8 @@ def load_all_alerts(_manager):
         if df.empty:
             return pd.DataFrame(columns=['id', 'created_at', 'level', 'message', 'source', 'metadata', 'ip_source', 'event_timestamp_dt'])
 
-        # --- Processament de Dades ---
         df['created_at_dt'] = pd.to_datetime(df['created_at'])
 
-        # Extreure IP de 'metadata' (JSON)
         def get_ip_from_metadata(metadata):
             if metadata:
                 try:
@@ -304,13 +312,11 @@ def load_all_alerts(_manager):
         
         if 'metadata' in df.columns:
             df['ip_source'] = df['metadata'].apply(get_ip_from_metadata)
-            # ★ CORRECCIÓ GRÀFIC: Extreu el timestamp de l'event (del log)
             df['event_timestamp_dt'] = df['metadata'].apply(get_timestamp_from_metadata)
         else:
             df['ip_source'] = 'N/A'
             df['event_timestamp_dt'] = None
         
-        # Si per alguna raó falla l'extracció del metadata, fem fallback al 'created_at'
         df['event_timestamp_dt'] = df['event_timestamp_dt'].fillna(df['created_at_dt'])
 
         return df
@@ -322,21 +328,17 @@ def load_all_alerts(_manager):
 # INTERFÍCIE WEB (Streamlit)
 # =========================================================
 
-# --- Configuració de la Pàgina ---
 st.set_page_config(page_title="Dashboard IDS SSH", layout="wide", page_icon="🛡️")
 
-# --- Títol i Descripció ---
 st.title("🛡️ Dashboard d'Analista de Seguretat (IDS SSH)")
 st.caption("Un monitor visual per a la detecció d'intrusions i anàlisi de logs SSH.")
 
-# Obtenim el gestor d'alertes (cachejat)
 manager = get_alert_manager()
 
-# --- Secció 1: Executar Anàlisi ---
 with st.expander("Panel d'Anàlisi (Execució Manual)"):
     st.info("""
     Prement aquest botó, el sistema llegirà 'sample.log', processarà les línies, 
-    detectarà atacs amb escalada de nivell (LOW, MEDIUM, HIGH, CRITICAL) i desarà les noves alertes.
+    detectarà atacs (Força Bruta vs Escaneig d'Usuaris) i desarà les noves alertes.
     """)
     if st.button("Analitzar 'sample.log' ara"):
         with st.spinner("Processant el fitxer de log..."):
@@ -350,50 +352,37 @@ with st.expander("Panel d'Anàlisi (Execució Manual)"):
         st.cache_data.clear()
 
 st.markdown("---")
-
-# --- Secció 2: Dashboard d'Alertes ---
 st.header("📊 Visualització de Dades")
 
-# Carregar dades
 alerts_df = load_all_alerts(manager)
 
-# --- Barra lateral de Filtres ---
 st.sidebar.header("🔍 Controls i Filtres")
-
-# Filtre de Cerca per IP
 ip_search = st.sidebar.text_input("Cercar per IP", help="Filtra per una IP específica. Ex: 192.168.1.100")
 
-# Filtre de Severitat (Nivell)
 if not alerts_df.empty:
     all_levels = sorted(alerts_df['level'].unique(), key=lambda x: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].index(x) if x in ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] else 99)
-    level_filter = st.sidebar.multiselect("Filtrar per Nivell", 
+    level_filter = st.sidebar.multoselect("Filtrar per Nivell", 
                                         options=all_levels, 
                                         help="Selecciona els nivells d'alerta a mostrar.")
 else:
     all_levels = []
     level_filter = []
 
-# Aplicar filtres
 if not alerts_df.empty:
     filtered_df = alerts_df.copy()
     if ip_search:
         filtered_df = filtered_df[filtered_df['ip_source'].str.contains(ip_search, case=False, na=False)]
-    
     if level_filter:
         filtered_df = filtered_df[filtered_df['level'].isin(level_filter)]
 else:
     filtered_df = alerts_df.copy()
 
-
-# --- Mostrar Dashboard ---
 if alerts_df.empty:
     st.info("No s'ha trobat cap alerta a la base de dades. Executa una anàlisi per començar.")
 elif filtered_df.empty:
     st.warning("S'han trobat alertes a la BD, però cap coincideix amb els filtres seleccionats.")
 else:
-    # --- Estadístiques Clau (basades en les dades filtrades) ---
     st.subheader("Estadístiques Clau (Segons Filtres)")
-    
     total_alerts = len(filtered_df)
     critical_alerts = filtered_df[filtered_df['level'] == 'CRITICAL'].shape[0]
     unacknowledged = filtered_df[filtered_df['acknowledged'] == 0].shape[0]
@@ -402,33 +391,30 @@ else:
     col1.metric("Total d'Alertes", total_alerts, help="Nombre total d'alertes que coincideixen amb els filtres.")
     col2.metric("Alertes Crítiques", critical_alerts, help="Nombre d'alertes de nivell 'CRITICAL'.")
     col3.metric("Alertes No Reconegudes", unacknowledged, help="Alertes pendents de revisió.")
-
     st.markdown("---")
 
-    # --- Gràfics (basats en les dades filtrades) ---
     col_graph1, col_graph2 = st.columns(2)
-
     with col_graph1:
-        # --- Gràfic Temporal d'Alertes (Corregit) ---
         st.subheader("📈 Gràfic Temporal d'Alertes")
         st.caption("Nombre d'alertes generades per hora (basat en l'hora del log).")
         
-        # ★ CORRECCIÓ GRÀFIC: Utilitza 'event_timestamp_dt'
-        alerts_per_hour = filtered_df.set_index('event_timestamp_dt').resample('h').size()
-        alerts_per_hour.name = "Nombre d'alertes"
-        
-        if alerts_per_hour.empty:
-            st.caption("No hi ha dades per mostrar al gràfic temporal.")
+        # ★ CORRECCIÓ GRÀFIC (Part 2): Convertir a DF simple abans de 'barchart' ★
+        if 'event_timestamp_dt' in filtered_df.columns:
+            alerts_per_hour = filtered_df.set_index('event_timestamp_dt').resample('h').size()
+            if alerts_per_hour.empty:
+                st.caption("No hi ha dades per mostrar al gràfic temporal.")
+            else:
+                # Convertim l'índex de temps en una columna per a st.barchart
+                alerts_per_hour_df = alerts_per_hour.reset_index()
+                alerts_per_hour_df.columns = ['Hora', 'Nombre d\'alertes']
+                st.bar_chart(alerts_per_hour_df, x='Hora', y='Nombre d\'alertes', use_container_width=True)
         else:
-            st.bar_chart(alerts_per_hour, use_container_width=True)
+            st.caption("No s'han pogut extreure les dades temporals.")
 
     with col_graph2:
-        # --- Gràfic d'Alertes per IP ---
         st.subheader("💥 Top IPs Problemàtiques")
         st.caption("Comptador d'alertes generades per cada IP.")
-        
         ip_counts = filtered_df[filtered_df['ip_source'] != 'N/A']['ip_source'].value_counts().head(10)
-        
         if not ip_counts.empty:
             st.bar_chart(ip_counts, use_container_width=True)
         else:
@@ -436,23 +422,17 @@ else:
 
     st.markdown("---")
 
-    # --- ★ NOU: APARTAT DE RESUM ★ ---
     st.subheader("🔔 Resum d'Alertes")
     st.caption("Visió ràpida de les alertes filtrades.")
     
-    # Seleccionem i reanomenem les columnes per al resum
     summary_df = filtered_df[['event_timestamp_dt', 'ip_source', 'level', 'message']]
     summary_df = summary_df.rename(columns={
-        'event_timestamp_dt': 'Data de l\'Event',
-        'ip_source': 'IP d\'Origen',
+        'event_timestamp_dt': "Data de l'Event",
+        'ip_source': "IP d'Origen",
         'level': 'Severitat',
         'message': 'Motiu (Descripció)'
     })
-    
-    # Mostrem el resum, ordenat per data més recent
     st.dataframe(summary_df.sort_values(by="Data de l'Event", ascending=False), use_container_width=True)
 
-    # --- Taula Completa (dins un desplegable) ---
     with st.expander("Veure Registre Detallat Complet (Totes les Columnes)"):
-        st.subheader("📄 Registre Detallat d'Alertes (Filtrat)")
         st.dataframe(filtered_df, use_container_width=True)
