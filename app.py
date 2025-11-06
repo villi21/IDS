@@ -2,6 +2,7 @@
 """
 app.py - IDS G3 ENTI
 Versió amb lògica de "Sessió d'Atac" (Una alerta per atac) i gràfic apilat funcional.
+(Correcció d'errors d'indentació i sintaxi)
 """
 
 import re
@@ -192,21 +193,16 @@ def parse_log_timestamp(date_str: str, base_year: int):
         full = f"{date_str} {base_year}"
         ts = datetime.strptime(full, "%b %d %H:%M:%S %Y")
         
-        # Gestió del canvi d'any: Si el log és de desembre i estem a gener,
-        # és probable que l'any del log sigui l'anterior.
-        # Com que el servidor pot estar a 2025, i el log és de 2024 (fictici),
-        # aquesta lògica és important.
+        # Gestió del canvi d'any
         if ts > datetime.now().replace(tzinfo=ts.tzinfo):
              ts = ts.replace(year=base_year - 1)
         return ts
     except Exception:
-        # Si falla, podria ser un log antic sense any. No ho gestionem ara.
         return None
 
 def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_template):
     """
     Lògica de "SESSIONS D'ATAC": Genera UNA alerta per cada "sessió" d'atac.
-    Una sessió es defineix com un grup d'intents separats per menys de ATTACK_SESSION_WINDOW_SECONDS.
     """
     ip_times = {}
     for att in failed_attempts:
@@ -227,23 +223,18 @@ def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_
         if not entries:
             continue
 
-        # Llista per guardar les sessions d'atac d'aquesta IP
         current_session = [entries[0]]
         
         for i in range(1, len(entries)):
             current_entry_ts, _ = entries[i]
             last_entry_ts, _ = current_session[-1]
             
-            # Comprovem si l'intent actual pertany a la sessió
             if (current_entry_ts - last_entry_ts).total_seconds() <= ATTACK_SESSION_WINDOW_SECONDS:
                 current_session.append(entries[i])
             else:
-                # La sessió s'ha tancat. Processem l'anterior.
                 alerts.extend(process_attack_session(current_session, thresholds_dict, threshold_levels_sorted, message_template, ip, failure_type))
-                # Comença una nova sessió
                 current_session = [entries[i]]
         
-        # Processem l'última sessió que queda al buffer
         alerts.extend(process_attack_session(current_session, thresholds_dict, threshold_levels_sorted, message_template, ip, failure_type))
                 
     return alerts
@@ -252,12 +243,10 @@ def process_attack_session(session_entries, thresholds_dict, threshold_levels_so
     """Funció helper per generar l'alerta d'UNA sessió d'atac."""
     count = len(session_entries)
     
-    # Comprovem si el recompte supera el llindar mínim
     min_threshold = min(thresholds_dict.values())
     if count < min_threshold:
         return [] # No és un atac, ignorem
 
-    # Determinem el nivell MÉS ALT assolit
     triggered_level = None
     for level, threshold in threshold_levels_sorted:
         if count >= threshold:
@@ -268,7 +257,6 @@ def process_attack_session(session_entries, thresholds_dict, threshold_levels_so
         first_ts, _ = session_entries[0]
         last_ts, last_att = session_entries[-1]
         
-        # Format ISO 8601 (amb T), vital per a JSON i Altair
         last_ts_iso = last_ts.isoformat() 
         first_ts_iso = first_ts.isoformat()
         
@@ -344,7 +332,6 @@ def get_timestamp_from_metadata(metadata_str):
     try:
         data = json.loads(metadata_str)
         if isinstance(data, dict) and 'timestamp' in data:
-            # datetime.fromisoformat pot gestionar el format amb 'T'
             return datetime.fromisoformat(data['timestamp'])
     except Exception as e:
         logger.warning(f"Error en parsejar timestamp de metadata: {e}")
@@ -396,7 +383,6 @@ def load_all_alerts(_manager):
 # INTERFÍCIE WEB (Streamlit)
 # =========================================================
 
-# --- ★ REQUERIMENT 1: CANVI DE TÍTOL ★ ---
 st.set_page_config(page_title="IDS G3 ENTI", layout="wide", page_icon="🛡️")
 
 st.title("🛡️ IDS G3 ENTI")
@@ -467,7 +453,6 @@ else:
 
     col_graph1, col_graph2 = st.columns(2)
     with col_graph1:
-        # --- ★ REQUERIMENT 2 i 3: GRÀFIC APILAT PER DIA ★ ---
         st.subheader("📈 Línia Temporal d'Alertes per Severitat")
         st.caption("Suma total d'atacs agrupats per dia i severitat.")
         
@@ -477,8 +462,14 @@ else:
                 
                 # Agrupem per DIA ('D') i comptem cada 'level'
                 # Assegurem que la data no tingui timezone per a un 'resample' net
-                alerts_per_day_level = time_data.set_index('event_timestamp_dt').tz_localize(None).resample('D')['level'].value_counts().reset_index(name='Nombre d_Alertes')
-                alerts_per_day_level.columns = ['Dia', 'Severitat', 'Nombre d\'Alertes'] # ★ CORRECCIÓ DE SINTAXI AQUÍ ★
+                
+                # ★★★ CORRECCIÓ DE SINTAXI (Línia 473) ★★★
+                # Canviem 'Nombre d_Alertes' per "Nombre d'Alertes" (cometes dobles)
+                alerts_per_day_level = time_data.set_index('event_timestamp_dt').tz_localize(None).resample('D')['level'].value_counts().reset_index(name="Nombre d'Alertes")
+                
+                # ★★★ CORRECCIÓ DE SINTAXI (Línia 474) ★★★
+                # Canviem 'Nombre d\'Alertes' per "Nombre d'Alertes" (cometes dobles)
+                alerts_per_day_level.columns = ['Dia', 'Severitat', "Nombre d'Alertes"]
 
                 if alerts_per_day_level.empty:
                     st.caption("No hi ha dades per mostrar al gràfic temporal.")
@@ -497,7 +488,8 @@ else:
                                         scale=alt.Scale(domain=domain_, range=range_),
                                         legend=alt.Legend(title="Severitat")),
                         # Tooltip per a detalls
-                        tooltip=[alt.Tooltip('Dia', format="%Y-%m-%d"), 'Severitat', 'Nombre d\'Alertes']
+                        # ★★★ CORRECCIÓ DE SINTAXI (Línia 489) ★★★
+                        tooltip=[alt.Tooltip('Dia', format="%Y-%m-%d"), 'Severitat', "Nombre d'Alertes"]
                     ).interactive() 
                     
                     st.altair_chart(chart, use_container_width=True)
