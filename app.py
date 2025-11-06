@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-app.py - Interfaz web per a l'Analista de Seguretat (IDS SSH).
+app.py - IDS G3 ENTI
 Versió amb lògica de "Sessió d'Atac" (Una alerta per atac) i gràfic funcional.
 """
 
@@ -188,16 +188,11 @@ def parse_log_timestamp(date_str: str, base_year: int):
     if not date_str or date_str in ("N/A", "Sense data"):
         return None
     try:
-        # Utilitzem l'any base (ex: 2025) que ens passen
         full = f"{date_str} {base_year}"
         ts = datetime.strptime(full, "%b %d %H:%M:%S %Y")
         return ts
     except Exception:
-        # Si falla, prova sense l'any (menys preferible)
-        try:
-            return datetime.strptime(date_str, "%b %d %H:%M:%S")
-        except:
-            return None
+        return None
 
 def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_template):
     """
@@ -392,9 +387,10 @@ def load_all_alerts(_manager):
 # INTERFÍCIE WEB (Streamlit)
 # =========================================================
 
-st.set_page_config(page_title="Dashboard IDS SSH", layout="wide", page_icon="🛡️")
+# --- ★ REQUERIMENT 1: CANVI DE TÍTOL ★ ---
+st.set_page_config(page_title="IDS G3 ENTI", layout="wide", page_icon="🛡️")
 
-st.title("🛡️ Dashboard d'Analista de Seguretat (IDS SSH)")
+st.title("🛡️ IDS G3 ENTI")
 st.caption("Un monitor visual per a la detecció d'intrusions i anàlisi de logs SSH.")
 
 manager = get_alert_manager()
@@ -478,8 +474,8 @@ else:
                     alerts_per_day_df.columns = ['Dia', "Nombre d'alertes"]
                     
                     chart = alt.Chart(alerts_per_day_df).mark_bar().encode(
-                        x=alt.X('Dia:T', title="Data de l'Event"), 
-                        y=alt.Y("Nombre d'alertes:Q", title="Nombre d'Alertes")
+                        x=alt.X('Dia:T', title="Data de l'Event"), # T indica a Altair que és Temporal
+                        y=alt.Y("Nombre d'alertes:Q", title="Nombre d'Alertes") # Q indica que és Quantitatiu
                     ).interactive() 
                     
                     st.altair_chart(chart, use_container_width=True)
