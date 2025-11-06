@@ -340,7 +340,7 @@ def load_all_alerts(_manager):
 # INTERFÍCIE WEB (Streamlit)
 # =========================================================
 
-st.set_page_config(page_title="Dashboard IDS SSH", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="IDS G3 ENTI", layout="wide", page_icon="🛡️")
 
 st.title("🛡️ Dashboard d'Analista de Seguretat (IDS SSH)")
 st.caption("Un monitor visual per a la detecció d'intrusions i anàlisi de logs SSH.")
