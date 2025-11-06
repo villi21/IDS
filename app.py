@@ -153,6 +153,9 @@ def detect_failed_attempts(lines):
     Analitza les línies de log i les classifica per tipus de fallada.
     """
     failed_attempts = []
+    # Per assignar un any base a logs que no en tenen
+    current_year = datetime.now().year
+    
     for line in lines:
         failure_type = None
         if "Failed password" in line or "authentication failure" in line:
@@ -165,10 +168,15 @@ def detect_failed_attempts(lines):
             date_match = DATE_RE.search(line)
             user_match = USER_RE.search(line)
             ip = ip_match.group(1) if ip_match else "Desconeguda"
-            date = date_match.group(0) if date_match else "Sense data"
+            date_str = date_match.group(0) if date_match else "Sense data"
             user = user_match.group(1) if user_match else "Desconegut"
+            
+            # Passem l'any base al parser
+            parsed_date = parse_log_timestamp(date_str, base_year=current_year)
+
             failed_attempts.append({
-                "data": date,
+                "data_str": date_str,
+                "timestamp": parsed_date, # Objecte datetime
                 "usuari": user,
                 "ip": ip,
                 "missatge": line,
@@ -176,35 +184,31 @@ def detect_failed_attempts(lines):
             })
     return failed_attempts
 
-def parse_log_timestamp(date_str: str, base_year=None):
+def parse_log_timestamp(date_str: str, base_year: int):
     if not date_str or date_str in ("N/A", "Sense data"):
         return None
     try:
-        # Extraiem el mes per lògica de l'any
-        month = date_str.split()[0]
-        day = int(date_str.split()[1])
-        
-        # Suposem l'any actual. Aquest script no està pensat per a logs de l'any passat.
-        # Això és un problema comú. Per a aquest projecte, utilitzarem l'any actual.
-        if base_year is None:
-            base_year = datetime.now().year
-            
+        # Utilitzem l'any base (ex: 2025) que ens passen
         full = f"{date_str} {base_year}"
-        return datetime.strptime(full, "%b %d %H:%M:%S %Y")
+        ts = datetime.strptime(full, "%b %d %H:%M:%S %Y")
+        
+        # Gestió del canvi d'any: si el log és de "Dec" i estem a "Jan",
+        # és probable que l'any del log sigui l'any *anterior*.
+        # Per a aquest projecte, ho simplifiquem i assumim tot és de l'any base.
+        return ts
     except Exception:
         return None
 
 def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_template):
     """
-    ★ NOVA LÒGICA: "SESSIONS D'ATAC" ★
-    Genera UNA alerta per cada "sessió" d'atac.
+    Lògica de "SESSIONS D'ATAC": Genera UNA alerta per cada "sessió" d'atac.
     Una sessió es defineix com un grup d'intents separats per menys de ATTACK_SESSION_WINDOW_SECONDS.
     """
     ip_times = {}
     for att in failed_attempts:
         if att.get("failure_type") == failure_type:
             ip = att.get("ip", "Desconeguda")
-            ts = parse_log_timestamp(att.get("data", ""))
+            ts = att.get("timestamp") # Ja és un objecte datetime
             if ts is None:
                 continue
             ip_times.setdefault(ip, []).append((ts, att))
@@ -218,37 +222,30 @@ def run_detection_logic(failed_attempts, failure_type, thresholds_dict, message_
         if not entries:
             continue
 
-        # Inicialitzem la primera sessió
         current_session = [entries[0]]
         
         for i in range(1, len(entries)):
             current_entry_ts, _ = entries[i]
             last_entry_ts, _ = current_session[-1]
             
-            # Comprovem si l'intent actual pertany a la sessió
             if (current_entry_ts - last_entry_ts).total_seconds() <= ATTACK_SESSION_WINDOW_SECONDS:
                 current_session.append(entries[i])
             else:
-                # La sessió s'ha tancat. Processem l'anterior.
-                alerts.extend(process_attack_session(current_session, thresholds_dict, threshold_levels_sorted, message_template, ip))
-                # Comença una nova sessió
+                alerts.extend(process_attack_session(current_session, thresholds_dict, threshold_levels_sorted, message_template, ip, failure_type))
                 current_session = [entries[i]]
         
-        # Processem l'última sessió
-        alerts.extend(process_attack_session(current_session, thresholds_dict, threshold_levels_sorted, message_template, ip))
+        alerts.extend(process_attack_session(current_session, thresholds_dict, threshold_levels_sorted, message_template, ip, failure_type))
                 
     return alerts
 
-def process_attack_session(session_entries, thresholds_dict, threshold_levels_sorted, message_template, ip):
+def process_attack_session(session_entries, thresholds_dict, threshold_levels_sorted, message_template, ip, failure_type):
     """Funció helper per generar l'alerta d'UNA sessió d'atac."""
     count = len(session_entries)
     
-    # Comprovem si el recompte supera el llindar mínim
     min_threshold = min(thresholds_dict.values())
     if count < min_threshold:
         return [] # No és un atac, ignorem
 
-    # Determinem el nivell MÉS ALT assolit
     triggered_level = None
     for level, threshold in threshold_levels_sorted:
         if count >= threshold:
@@ -259,7 +256,6 @@ def process_attack_session(session_entries, thresholds_dict, threshold_levels_so
         first_ts, _ = session_entries[0]
         last_ts, last_att = session_entries[-1]
         
-        # ★ CORRECCIÓ DEL GRÀFIC: Canviem 'sep=" "' per 'T' ★
         last_ts_iso = last_ts.isoformat() 
         first_ts_iso = first_ts.isoformat()
         
@@ -269,11 +265,11 @@ def process_attack_session(session_entries, thresholds_dict, threshold_levels_so
             "source": "SSH IDS",
             "metadata": {
                 "ip": ip,
-                "timestamp": last_ts_iso, # Timestamp de l'event (format ISO 8601)
+                "timestamp": last_ts_iso, # Format ISO 8601 (amb T)
                 "usuari": last_att.get('usuari'),
                 "primer_intent_finestra": first_ts_iso,
                 "total_intents_finestra": count,
-                "attack_type": last_att.get('failure_type')
+                "attack_type": failure_type
             }
         }
         return [alert]
@@ -335,7 +331,6 @@ def get_timestamp_from_metadata(metadata_str):
     try:
         data = json.loads(metadata_str)
         if isinstance(data, dict) and 'timestamp' in data:
-            # ★ CORRECCIÓ DEL GRÀFIC: Ara pot llegir el format ISO 8601 amb 'T' ★
             return datetime.fromisoformat(data['timestamp'])
     except:
         return None
@@ -373,7 +368,6 @@ def load_all_alerts(_manager):
             df['ip_source'] = 'N/A'
             df['event_timestamp_dt'] = None
         
-        # Converteix a datetime de pandas (pd.to_datetime) per assegurar compatibilitat amb Altair
         df['event_timestamp_dt'] = pd.to_datetime(df['event_timestamp_dt'], utc=True)
         df['event_timestamp_dt'] = df['event_timestamp_dt'].fillna(pd.to_datetime(df['created_at_dt'], utc=True))
 
@@ -462,7 +456,7 @@ else:
         if 'event_timestamp_dt' in filtered_df.columns:
             time_data = filtered_df.dropna(subset=['event_timestamp_dt'])
             if not time_data.empty:
-                # ★ CORRECCIÓ GRÀFIC: Agrupem per hora ('h') ★
+                # Agrupem per hora ('h')
                 alerts_per_hour = time_data.set_index('event_timestamp_dt').resample('h').size()
                 if alerts_per_hour.empty:
                     st.caption("No hi ha dades per mostrar al gràfic temporal.")
