@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 app.py - IDS G3 ENTI
-Versió amb lògica de "Sessió d'Atac" (Una alerta per atac) i gràfic funcional.
+Versió amb lògica de "Sessió d'Atac" (Una alerta per atac) i gràfic apilat funcional.
 """
 
 import re
@@ -153,13 +153,12 @@ def detect_failed_attempts(lines):
     Analitza les línies de log i les classifica per tipus de fallada.
     """
     failed_attempts = []
-    # Per assignar un any base a logs que no en tenen
     current_year = datetime.now().year
     
     for line in lines:
         failure_type = None
         if "Failed password" in line or "authentication failure" in line:
-            failure_type = "password_auth" # Agrupem "Failed pass" i "auth failure"
+            failure_type = "password_auth"
         elif "Invalid user" in line:
             failure_type = "invalid_user"
         
@@ -171,7 +170,6 @@ def detect_failed_attempts(lines):
             date_str = date_match.group(0) if date_match else "Sense data"
             user = user_match.group(1) if user_match else "Desconegut"
             
-            # Passem l'any base al parser
             parsed_date = parse_log_timestamp(date_str, base_year=current_year)
 
             failed_attempts.append({
@@ -188,8 +186,14 @@ def parse_log_timestamp(date_str: str, base_year: int):
     if not date_str or date_str in ("N/A", "Sense data"):
         return None
     try:
+        # Intenta parsejar la data amb l'any base
         full = f"{date_str} {base_year}"
         ts = datetime.strptime(full, "%b %d %H:%M:%S %Y")
+        
+        # Gestió del canvi d'any: Si el log és de desembre i estem a gener,
+        # és probable que l'any del log sigui l'anterior.
+        if ts > datetime.now().replace(tzinfo=ts.tzinfo):
+             ts = ts.replace(year=base_year - 1)
         return ts
     except Exception:
         return None
@@ -374,7 +378,7 @@ def load_all_alerts(_manager):
             df['ip_source'] = 'N/A'
             df['event_timestamp_dt'] = None
         
-        # Convertim a datetime de pandas. Eliminem 'utc=True' per evitar conflictes.
+        # Convertim a datetime de pandas.
         df['event_timestamp_dt'] = pd.to_datetime(df['event_timestamp_dt'])
         df['event_timestamp_dt'] = df['event_timestamp_dt'].fillna(pd.to_datetime(df['created_at_dt']))
 
@@ -458,24 +462,36 @@ else:
 
     col_graph1, col_graph2 = st.columns(2)
     with col_graph1:
-        st.subheader("📈 Línia Temporal d'Alertes")
-        st.caption("Activitat d'alertes agrupada per dia (basada en la data de l'event del log).")
+        # --- ★ REQUERIMENT 2 i 3: GRÀFIC APILAT PER DIA ★ ---
+        st.subheader("📈 Línia Temporal d'Alertes per Severitat")
+        st.caption("Suma total d'atacs agrupats per dia i severitat.")
         
         if 'event_timestamp_dt' in filtered_df.columns:
             time_data = filtered_df.dropna(subset=['event_timestamp_dt'])
             if not time_data.empty:
-                # ★★★ SOLUCIÓ GRÀFIC: Agrupem per DIA ('D') ★★★
-                # El nou log té dades de 3 dies diferents, això funcionarà.
-                alerts_per_day = time_data.set_index('event_timestamp_dt').resample('D').size()
-                if alerts_per_day.empty:
+                
+                # Agrupem per DIA ('D') i comptem cada 'level'
+                alerts_per_day_level = time_data.set_index('event_timestamp_dt').resample('D')['level'].value_counts().reset_index(name='Nombre d'Alertes')
+                alerts_per_day_level.columns = ['Dia', 'Severitat', 'Nombre d\'Alertes']
+
+                if alerts_per_day_level.empty:
                     st.caption("No hi ha dades per mostrar al gràfic temporal.")
                 else:
-                    alerts_per_day_df = alerts_per_day.reset_index()
-                    alerts_per_day_df.columns = ['Dia', "Nombre d'alertes"]
-                    
-                    chart = alt.Chart(alerts_per_day_df).mark_bar().encode(
-                        x=alt.X('Dia:T', title="Data de l'Event"), # T indica a Altair que és Temporal
-                        y=alt.Y("Nombre d'alertes:Q", title="Nombre d'Alertes") # Q indica que és Quantitatiu
+                    # Definim l'ordre i els colors
+                    domain_ = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
+                    range_ = ['#00b0f0', '#ffc000', '#ff0000', '#c00000'] # Blau, Taronja, Vermell, Vermell fosc
+
+                    chart = alt.Chart(alerts_per_day_level).mark_bar().encode(
+                        # Agrupem per Dia (formatat)
+                        x=alt.X('Dia:T', title="Data de l'Event", axis=alt.Axis(format="%Y-%m-%d")),
+                        # Suma de les alertes
+                        y=alt.Y("Nombre d'Alertes:Q", title="Nombre d'Alertes"),
+                        # Apilem per color de severitat
+                        color=alt.Color('Severitat', 
+                                        scale=alt.Scale(domain=domain_, range=range_),
+                                        legend=alt.Legend(title="Severitat")),
+                        # Tooltip per a detalls
+                        tooltip=['Dia', 'Severitat', 'Nombre d\'Alertes']
                     ).interactive() 
                     
                     st.altair_chart(chart, use_container_width=True)
