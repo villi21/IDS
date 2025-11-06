@@ -1,6 +1,7 @@
 # =========================================================
 # DIA 1: 10 OCTUBRE - TOTAL: 2 CRITICAL, 3 HIGH
 # =========================================================
+
 # --- ATAC CRITICAL 1 (6 intents pass) ---
 Oct 10 09:10:01 server sshd[1001]: Failed password for root from 185.191.171.10 port 55001 ssh2
 Oct 10 09:10:05 server sshd[1002]: Failed password for root from 185.191.171.10 port 55002 ssh2
